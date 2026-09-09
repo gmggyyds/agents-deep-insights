@@ -51,6 +51,18 @@ RESPOND WITH ONLY A VALID JSON OBJECT.\n`;
 }
 
 /** transcript 压缩：折叠重复工具调用，截长度。内容已在 provider 层脱敏，这里再兜一次。 */
+/**
+ * codex exec 的执行选项。三个都不是可选项：
+ *   cwd            → 在临时目录跑。留在仓库里 codex 会加载项目 AGENTS.md 与全局 skill，
+ *                    把「读输入出 JSON」当成「要干的活」，然后满世界跑工具。
+ *   ignore-user-config → 同上，切断用户级配置。
+ *   maxBuffer      → 上面那种「干活模式」输出几百 KB，Node 默认 1MB 缓冲会 ENOBUFS，
+ *                    而 ENOBUFS 的报错信息里看不出真正原因，极难定位。
+ */
+function EXEC_OPTS(input, timeout, cwd) {
+  return { input, cwd, stdio: ['pipe', 'pipe', 'pipe'], timeout, maxBuffer: 64 * 1024 * 1024 };
+}
+
 export function compactTranscript(lines, maxChars = 14000) {
   const out = []; let prev = null, run = 0;
   for (const l of lines) {
@@ -67,7 +79,7 @@ export function labelWithCodex(meta, { model, strict = true, timeoutMs = 180000 
   try {
     const prompt = buildPrompt(compactTranscript(meta.transcript || []), meta, { withEnums: !strict });
     const outFile = join(dir, 'o.json');
-    const args = ['exec', '--skip-git-repo-check', '--ephemeral', '-o', outFile];
+    const args = ['exec', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-o', outFile];
     if (model) args.push('-m', model);
     if (strict) {
       const sf = join(dir, 's.json');
@@ -77,7 +89,7 @@ export function labelWithCodex(meta, { model, strict = true, timeoutMs = 180000 
     args.push('-');
     let stderr = '';
     try {
-      execFileSync('codex', args, { input: prompt, stdio: ['pipe', 'pipe', 'pipe'], timeout: timeoutMs });
+      execFileSync('codex', args, EXEC_OPTS(prompt, timeoutMs, dir));
     } catch (e) {
       stderr = (e.stderr?.toString() || e.message || '').slice(0, 400);
     }

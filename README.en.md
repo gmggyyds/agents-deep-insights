@@ -93,6 +93,27 @@ adi doctor --issue                 # diagnostics ready to paste into an issue
 
 Analyzed sessions are cached by content fingerprint, so re-running does not spend tokens twice.
 
+## What's in the report
+
+`adi run` produces something you can act on, not a statistics dashboard:
+
+| Section | Content |
+|---|---|
+| Headline | The single most consequential pattern — not a summary of counts |
+| What's working | 2-3 items, each grounded in a concrete situation from your sessions |
+| **Friction, split three ways** | **Yours to fix** / model limitations / environment |
+| Paste-ready rules | Derived only from "yours to fix" frictions repeating across 3+ sessions |
+| What to try next | Each with a prompt you can paste straight into your agent |
+| Raw statistics | Collapsed at the bottom, so you can check the claims above |
+
+**The three-way split is the point.** The official `/insights` reports all 12 friction categories
+as one pile, leaving you unable to tell which ones were yours. Split apart, the report can say
+"here is what you could do differently, concretely" — the other two buckets will not disappear by
+asking better questions, so the first one is where the leverage is.
+
+All numbers are computed by deterministic code. The model only turns them into prose and cites
+evidence; it never counts.
+
 ## Design principle
 
 **The model labels; the code counts.**

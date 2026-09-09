@@ -1,6 +1,6 @@
 {
   "name": "agents-deep-insights",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Turn your local AI coding-agent sessions into an actionable friction report. Runs fully offline; nothing leaves your machine.",
   "type": "module",
   "bin": { "adi": "./src/cli.mjs" },

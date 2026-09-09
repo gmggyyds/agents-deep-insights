@@ -13,7 +13,9 @@ const LABEL = {
 };
 const L = (k) => LABEL[k] || k;
 
-export function renderHtml({ metaAgg, facetAgg, meta }) {
+export function renderHtml({ metaAgg, facetAgg, meta, narrative }) {
+  const N = narrative || null;
+  const para = (t) => t ? `<p class="nar">${esc(t).replace(/\n/g, '<br>')}</p>` : '';
   const total = Object.values(facetAgg.attribution).reduce((a, b) => a + b, 0) || 1;
   const pct = (n) => Math.round((n / total) * 100);
   const bar = (list, max) => list.map((f) => `
@@ -41,6 +43,19 @@ h1{font-size:32px;margin:0 0 8px}h2{font-size:21px;margin:44px 0 14px;padding-le
 .a0{background:#fbeee9;border-color:#b4553f}.a1{background:#eef1f7;border-color:#7a8db5}.a2{background:#eeebe6;border-color:#a89f92}
 .attr b{display:block;font-size:26px}.attr span{font-size:12.5px}
 .note{background:#fff;border:1.5px solid #ddd8d0;border-radius:12px;padding:18px 20px;margin:16px 0;font-size:14px}
+.lead{font-size:19px;line-height:1.6;background:#fff;border-left:5px solid #b4553f;border-radius:0 12px 12px 0;padding:20px 24px;margin:22px 0}
+.nar{font-size:15px;line-height:1.85;margin:12px 0 20px}
+.blk{background:#fff;border:1.5px solid #ddd8d0;border-radius:12px;padding:18px 22px;margin:14px 0}
+.blk h4{margin:0 0 8px;font-size:16px}.blk p{font-size:14.5px;margin:0;color:#3d3d3d}
+.blk.mine{border-left:5px solid #b4553f}.blk.mdl{border-left:5px solid #7a8db5}.blk.env{border-left:5px solid #a89f92}
+.rule{background:#fff;border:1.5px solid #ddd8d0;border-radius:12px;padding:16px 20px;margin:12px 0;position:relative}
+.rule code{display:block;background:#f4f1ec;padding:12px 14px;border-radius:8px;font-size:14px;line-height:1.6;white-space:pre-wrap;margin:0 0 10px}
+.rule .why{font-size:13.5px;color:#6a6a6a}
+.rule .n{position:absolute;top:14px;right:16px;font-size:12px;color:#8a8a8a;background:#f4f1ec;padding:2px 9px;border-radius:20px}
+.step{background:#fff;border:1.5px solid #ddd8d0;border-radius:12px;padding:16px 20px;margin:12px 0}
+.step h4{margin:0 0 6px;font-size:15.5px}.step p{font-size:14px;color:#3d3d3d;margin:0 0 10px}
+.step pre{background:#1c1b19;color:#d4d0c8;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.55;overflow-x:auto;margin:0;white-space:pre-wrap}
+details{margin:18px 0}summary{cursor:pointer;font-size:15px;font-weight:700;padding:10px 0;color:#6a6a6a}
 .warn{background:#fbeee9;border-color:#b4553f}
 ul{padding-left:20px;font-size:14px}code{background:#efebe5;padding:1px 6px;border-radius:4px;font-size:13px}
 footer{margin-top:56px;padding-top:18px;border-top:2px solid #e2ded7;color:#8a8a8a;font-size:12.5px}
@@ -57,6 +72,13 @@ footer{margin-top:56px;padding-top:18px;border-top:2px solid #e2ded7;color:#8a8a
 <div class="card"><b>${metaAgg.gitCommits}</b><span>提交次数</span></div>
 </div>
 
+${N ? `<div class="lead">${esc(N.headline)}</div>` : ''}
+
+${N && N.working_well ? `
+<h2>你做得好的地方</h2>
+${para(N.working_well.summary)}
+${(N.working_well.items || []).map((i) => `<div class="blk"><h4>${esc(i.title)}</h4><p>${esc(i.detail)}</p></div>`).join('')}` : ''}
+
 <h2>这些摩擦里，多少是你能改的</h2>
 <div class="attr">
 <div class="a0"><b>${pct(facetAgg.attribution.user_actionable)}%</b><span>${esc(L('user_actionable'))}</span></div>
@@ -66,23 +88,39 @@ footer{margin-top:56px;padding-top:18px;border-top:2px solid #e2ded7;color:#8a8a
 <div class="note">只有第一格是你下次能直接改进的。后两格换个提问方式也不会消失——
 把注意力放在第一格上，投入产出比最高。</div>
 
+${N && N.friction_narrative ? `
+<div class="blk mine"><h4>你自己能改的</h4><p>${esc(N.friction_narrative.yours_to_fix)}</p></div>
+<div class="blk mdl"><h4>助手能力所限</h4><p>${esc(N.friction_narrative.model_limits)}</p></div>
+<div class="blk env"><h4>环境或工具问题</h4><p>${esc(N.friction_narrative.environment)}</p></div>` : ''}
+
 <h2>重复出现的摩擦</h2>
 ${facetAgg.friction.length ? bar(facetAgg.friction, fmax)
   : '<div class="note">没有任何摩擦重复出现 2 次以上。样本可能偏少。</div>'}
 
-<h2>值得固化成规则的（重复 ≥ 3 个会话）</h2>
-${facetAgg.ruleCandidates.length ? `<ul>${facetAgg.ruleCandidates.map((f) =>
-  `<li><b>${esc(L(f.key))}</b> — 在 ${f.sessions} 个会话里出现，共 ${f.count} 次。
-   建议在 <code>AGENTS.md</code> / <code>CLAUDE.md</code> 里写一条针对它的约束。</li>`).join('')}</ul>`
-  : '<div class="note">还没有摩擦重复到 3 个会话以上。门槛设在 3 是为了避免把偶发问题写成规则。</div>'}
+<h2>可以直接粘进 AGENTS.md 的规则</h2>
+${N && N.rules && N.rules.length ? N.rules.map((r) => `
+<div class="rule"><span class="n">${r.evidence_count} 个会话</span>
+<code>${esc(r.rule)}</code><div class="why">${esc(r.why)}</div></div>`).join('')
+  : (facetAgg.ruleCandidates.length ? `<ul>${facetAgg.ruleCandidates.map((f) =>
+      `<li><b>${esc(L(f.key))}</b> — 在 ${f.sessions} 个会话里出现，共 ${f.count} 次</li>`).join('')}</ul>`
+    : '<div class="note">还没有摩擦重复到 3 个会话以上。门槛设在 3，是为了避免把偶发问题写成规则。</div>')}
 ${facetAgg.repeatedInstructions.length ? `
 <h2>你反复说过的话</h2>
 <div class="note">说过两次以上的指令，本身就是最好的规则候选——写进配置文件就不用再说第三次。</div>
 <ul>${facetAgg.repeatedInstructions.slice(0, 8).map((i) =>
   `<li>${esc(i.text)} <small>（${i.n} 次）</small></li>`).join('')}</ul>` : ''}
 
-<h2>你主要在做什么</h2>
+${N && N.next_steps && N.next_steps.length ? `
+<h2>下一步可以试试</h2>
+${N.next_steps.map((s2) => `<div class="step"><h4>${esc(s2.title)}</h4>
+<p>${esc(s2.why_for_you)}</p><pre>${esc(s2.copyable_prompt)}</pre></div>`).join('')}` : ''}
+
+<details><summary>展开：支撑这些结论的原始统计</summary>
+<h3 style="font-size:17px;margin:18px 0 10px">你主要在做什么</h3>
 ${facetAgg.goals.length ? bar(facetAgg.goals, gmax) : '<div class="note">样本不足。</div>'}
+<h3 style="font-size:17px;margin:22px 0 10px">会话结果分布</h3>
+<div class="note">${Object.entries(facetAgg.outcomes).map(([k, v]) => `${esc(k)}: ${v}`).join(' · ') || '无'}</div>
+</details>
 
 <div class="note warn"><b>关于这些数字的可信度</b><br>
 计数由确定性代码统计，不经过模型。但单会话的打标由 LLM 完成，实测存在 ±1 的边界判断噪声，

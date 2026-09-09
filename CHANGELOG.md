@@ -13,6 +13,25 @@
 - 跨工具同尺对比（同一类摩擦在 Codex 与 Claude Code 上是否都排前列）
 - 周度清单出口：未完成 / 半成品 / 已出 bug / 可合并
 
+## [0.2.0] - 2026-09-09
+
+### 新增
+- **L5 叙事合成层**——这是 v0.1 缺失的半层，也是它只能产出统计报表的原因。
+  报告现在包含：一句话结论、你做得好的地方、摩擦按归因分三段叙述、
+  可直接粘贴进 AGENTS.md 的规则、下一步可试（带可粘贴提示词）。
+  叙事字符数从 49（免责声明）提升到 1,563（3 个会话样本）。
+- 报告改为叙事在前、原始统计折叠在后。数字仍由确定性代码计算，模型不参与计数。
+- `--no-narrative` 跳过合成，只出统计（省一次调用）。
+
+### 修复
+- **`codex exec` 在项目目录里会进入「干活模式」**：加载项目 `AGENTS.md` 与全局 skill 后，
+  把「读输入出 JSON」当成要执行的任务，去读 skill 文档、扫 home 目录，
+  输出几百 KB 撑爆 Node 默认 1MB 缓冲，报 `ENOBUFS` 且看不出真因。
+  修法：`cwd` 用临时目录 + `--ignore-user-config` + `maxBuffer` 提到 64MB。
+  效果：从「靠重试侥幸成功」变成一次成功，单次调用 79s → 32s。
+- 合成失败时不再吞掉错误详情（此前只打印错误码，违反本项目自己的可诊断性原则）。
+- 剥离 codex 那条把整个模型列表塞进一行的 ERROR 日志，它会淹没真正的报错。
+
 ## [0.1.2] - 2026-09-09
 
 ### 变更
@@ -67,7 +86,8 @@
 - 仅在 macOS + codex-cli 0.131.0 + gpt-5.5 上实测。
 - codex-cli 0.131.0 无法使用账号默认模型（需 `--model gpt-5.5` 或升级 Codex）。
 
-[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/gmggyyds/agents-deep-insights/releases/tag/v0.1.0

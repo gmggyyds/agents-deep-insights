@@ -26,7 +26,7 @@ function tryExec(cmd, args) {
 }
 
 export function collect() {
-  const d = { tool: 'agents-deep-insights', version: '0.1.2', ts: new Date().toISOString() };
+  const d = { tool: 'agents-deep-insights', version: '0.2.0', ts: new Date().toISOString() };
   d.env = { os: `${platform()} ${release()}`, node: process.version, arch: process.arch };
 
   const cv = tryExec('codex', ['--version']);

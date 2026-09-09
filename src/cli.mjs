@@ -11,6 +11,7 @@ import { stratifiedSample } from './pipeline/sample.mjs';
 import { aggregateFacets } from './pipeline/aggregate.mjs';
 import { labelWithCodex, compactTranscript } from './pipeline/label.mjs';
 import { renderHtml } from './render/html.mjs';
+import { synthesize } from './pipeline/synthesize.mjs';
 import { createHash } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,7 +46,7 @@ function loadMetas(days, only) {
 
 function help() {
   console.log(`
-  agents-deep-insights (adi) v0.1.2
+  agents-deep-insights (adi) v0.2.0
   把本地 AI 编码会话变成可行动的摩擦报告。全程离线，数据不出本机。
 
   adi stats            纯统计，零 LLM、零网络、零额度（默认）
@@ -56,6 +57,7 @@ function help() {
                        --out <path>  报告输出路径
                        --no-schema   降级到 prompt-only（不推荐）
                        --no-open     不自动打开浏览器
+                       --no-narrative 跳过叙事合成，只出统计（省一次调用）
 
   --days <n>           时间窗，默认 30；0 表示全部
   --provider <name>    只用某个数据源：codex | claude-code
@@ -156,11 +158,25 @@ async function main() {
     }
     const metaAgg = aggregateMetas(metas);
     const facetAgg = aggregateFacets(facets);
+
+    // L5 叙事合成：数字已算好，这一层只把它们写成人话 + 引用具体证据。
+    // 缺了它，产出就只是一张统计报表。
+    let narrative = null;
+    if (!has('no-narrative')) {
+      process.stdout.write('  正在合成叙事…\r');
+      const syn = synthesize(facetAgg, facets, { model });
+      if (syn.ok) { narrative = syn.narrative; console.log('  叙事已合成                    '); }
+      else {
+        console.log(`  叙事合成失败（${syn.code}），退回纯统计报告`);
+        if (syn.detail) console.log(`    ${syn.detail.split('\n')[0].slice(0, 160)}`);
+        console.log('    可用 --no-narrative 跳过这一步，或跑 `adi doctor --issue` 提 issue');
+      }
+    }
     const days_ = picked.map((m) => m.startedAt).filter(Boolean);
     const spanDays = days_.length ? Math.round((Math.max(...days_) - Math.min(...days_)) / 864e5) : 0;
-    const html = renderHtml({ metaAgg, facetAgg, meta: {
+    const html = renderHtml({ metaAgg, facetAgg, narrative, meta: {
       generatedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      providers: used, windowDays: days, spanDays, version: '0.1.2', repairsCount } });
+      providers: used, windowDays: days, spanDays, version: '0.2.0', repairsCount } });
     const out = String(flag('out', join(process.cwd(), 'adi-report.html')));
     fs.writeFileSync(out, html);
     console.log(`  报告已生成: ${out}`);
