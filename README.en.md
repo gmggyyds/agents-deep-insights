@@ -12,7 +12,9 @@ Turn your local AI coding-agent sessions into an actionable report: which proble
 npx github:gmggyyds/agents-deep-insights          # the screenshot above, 2 seconds, no tokens spent
 ```
 
-Works with **Codex CLI** and **Claude Code**. Everything runs on your machine — no uploads, no telemetry, no account.
+Works with **Codex CLI** and **Claude Code**. Collection and statistics run entirely on your machine — no
+telemetry, no account, no third-party server. For deep analysis, `run` sends **redacted excerpts** to
+**the model you have already configured** (`codex exec`).
 
 > Prefer a short command? `npm i -g github:gmggyyds/agents-deep-insights`, then just type `adi`.
 > Not published to the npm registry yet.
@@ -21,8 +23,11 @@ Works with **Codex CLI** and **Claude Code**. Everything runs on your machine �
 
 ## Privacy first
 
-- Session content is read **locally** and sent only to **the LLM you already configured** (`codex exec`).
-  It never passes through a third-party server.
+- **Which steps go online, stated plainly**:
+  `stats` and `doctor` are **fully local** — no network, no model calls.
+  `run` sends redacted session excerpts to the model you configured (`codex exec`); that step
+  necessarily goes online, but through your own credentials and quota — this tool has no server of its own.
+  Fetching the source via `npx` also uses the network.
 - The collector **redacts by default**: JWTs, `sk-` / `ghp_` / `xoxb-` / `AKIA` style keys, tokens in URLs,
   emails, private-key blocks and long opaque strings are replaced *before* anything reaches a model.
   > Not a hypothetical. While extracting a real session during development, it contained a live login token.

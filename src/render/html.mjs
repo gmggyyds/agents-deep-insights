@@ -52,6 +52,7 @@ h1{font-size:32px;margin:0 0 8px}h2{font-size:21px;margin:44px 0 14px;padding-le
 .rule code{display:block;background:#f4f1ec;padding:12px 14px;border-radius:8px;font-size:14px;line-height:1.6;white-space:pre-wrap;margin:0 0 10px}
 .rule .why{font-size:13.5px;color:#6a6a6a}
 .rule .n{position:absolute;top:14px;right:16px;font-size:12px;color:#8a8a8a;background:#f4f1ec;padding:2px 9px;border-radius:20px}
+@media(max-width:820px){.rule .n{position:static;display:inline-block;margin-bottom:8px}.row{grid-template-columns:110px 1fr 88px;font-size:13px}.attr{grid-template-columns:1fr}}
 .step{background:#fff;border:1.5px solid #ddd8d0;border-radius:12px;padding:16px 20px;margin:12px 0}
 .step h4{margin:0 0 6px;font-size:15.5px}.step p{font-size:14px;color:#3d3d3d;margin:0 0 10px}
 .step pre{background:#1c1b19;color:#d4d0c8;padding:12px 14px;border-radius:8px;font-size:13px;line-height:1.55;overflow-x:auto;margin:0;white-space:pre-wrap}
@@ -63,7 +64,8 @@ footer{margin-top:56px;padding-top:18px;border-top:2px solid #e2ded7;color:#8a8a
 <h1>你的 AI 编码摩擦报告</h1>
 <p class="sub">哪些问题在重复发生，以及其中哪些是你自己能改的。</p>
 <p class="meta">${esc(meta.generatedAt)} · 数据源 ${esc(meta.providers.join(' + '))} · 近 ${meta.windowDays} 天 ·
-分析了 ${facetAgg.n} 个实质会话（覆盖 ${esc(meta.spanDays)} 天）· 全程本地运行，数据未离开你的机器</p>
+深度分析 ${facetAgg.n} 个会话（覆盖 ${esc(meta.spanDays)} 天）· 采集与统计在本地完成，
+仅脱敏后的会话片段发送给你自己配置的模型</p>
 
 <div class="cards">
 <div class="card"><b>${metaAgg.sessions}</b><span>总会话</span></div>
@@ -123,7 +125,10 @@ ${facetAgg.goals.length ? bar(facetAgg.goals, gmax) : '<div class="note">样本�
 </details>
 
 <div class="note warn"><b>关于这些数字的可信度</b><br>
-计数由确定性代码统计，不经过模型。但单会话的打标由 LLM 完成，实测存在 ±1 的边界判断噪声，
+顶部四个数字取自全部会话；摩擦与归因取自深度分析的那部分样本，两者范围不同。
+计数由确定性代码统计，不经过模型；摩擦类别由模型对单个会话打标后再由代码汇总。
+超长会话在送入模型前会保留首尾、省略中段，因此极长会话的中间过程可能未被覆盖。
+实测单会话打标存在 ±1 的边界判断噪声，
 因此<b>单条数字不必细究，趋势和排序才是可用的</b>。分类判断（结果、会话类型）在实测中稳定复现。
 ${meta.repairsCount ? `<br>本次归一化修复了 ${meta.repairsCount} 处模型输出偏差。` : ''}</div>
 

@@ -8,7 +8,8 @@
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { platform, release, homedir } from 'node:os';
+import { platform, release, homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
 import * as codex from './providers/codex.mjs';
 import * as cc from './providers/claude-code.mjs';
 
@@ -26,7 +27,7 @@ function tryExec(cmd, args) {
 }
 
 export function collect() {
-  const d = { tool: 'agents-deep-insights', version: '0.2.0', ts: new Date().toISOString() };
+  const d = { tool: 'agents-deep-insights', version: '0.2.1', ts: new Date().toISOString() };
   d.env = { os: `${platform()} ${release()}`, node: process.version, arch: process.arch };
 
   const cv = tryExec('codex', ['--version']);
@@ -35,9 +36,11 @@ export function collect() {
   const clv = tryExec('claude', ['--version']);
   d.claudeCode = { installed: clv.ok, version: clv.ok ? clv.out.split('\n')[0] : null };
 
+  // doctor 输出要贴进公开 issue，绝不能带本机用户名
+  const tilde = (p) => String(p).replace(homedir(), '~');
   d.sources = {
-    codexHome: { path: codex.codexHome(), exists: existsSync(codex.codexHome()) },
-    claudeMeta: { path: cc.metaDir().replace(homedir(), '~'), exists: existsSync(cc.metaDir()) },
+    codexHome: { path: tilde(codex.codexHome()), exists: existsSync(codex.codexHome()) },
+    claudeMeta: { path: tilde(cc.metaDir()), exists: existsSync(cc.metaDir()) },
   };
   d.counts = {
     codexSessions30d: codex.discover({ days: 30 }).length,
@@ -62,7 +65,7 @@ export function collect() {
 export function probeSchema() {
   if (!tryExec('codex', ['--version']).ok) return { supported: false, code: 'E_CODEX_MISSING' };
   const { mkdtempSync, writeFileSync, rmSync } = require$fs();
-  const dir = mkdtempSync('/tmp/adi-probe-');
+  const dir = mkdtempSync(join(tmpdir(), 'adi-probe-'));  // 不能写死 /tmp，Windows 上 ENOENT
   const sf = `${dir}/s.json`;
   writeFileSync(sf, JSON.stringify({
     type: 'object', additionalProperties: false,

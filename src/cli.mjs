@@ -18,8 +18,11 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const CACHE = join(process.env.ADI_CACHE || join(homedir(), '.agents-deep-insights'), 'facets');
+// 指纹必须包含转录内容本身。此前只用长度，内容变了但长度不变会命中旧缓存、
+// 复用过时结果（外部测试发现："Need AAA" -> "Need BBB" 指纹不变）。
 const fingerprint = (m) => createHash('sha256')
-  .update(`v1|${m.provider}|${m.id}|${m.userMessages}|${m.toolCalls}|${compactTranscript(m.transcript || []).length}`)
+  .update(`v2|${m.provider}|${m.id}|${m.userMessages}|${m.toolCalls}|`)
+  .update(compactTranscript(m.transcript || []))
   .digest('hex').slice(0, 16);
 
 const argv = process.argv.slice(2);
@@ -46,8 +49,9 @@ function loadMetas(days, only) {
 
 function help() {
   console.log(`
-  agents-deep-insights (adi) v0.2.0
-  把本地 AI 编码会话变成可行动的摩擦报告。全程离线，数据不出本机。
+  agents-deep-insights (adi) v0.2.1
+  把本地 AI 编码会话变成可行动的摩擦报告。
+  stats / doctor 完全本地不联网；run 会把脱敏后的会话片段发给你自己配置的模型。
 
   adi stats            纯统计，零 LLM、零网络、零额度（默认）
   adi doctor           环境自检；--issue 输出可直接贴 GitHub 的 markdown
@@ -149,11 +153,11 @@ async function main() {
           }
           continue;
         }
-        r = { facet: out.facet, repairs: out.repairs };
+        r = { facet: { ...out.facet, session_id: m.id }, repairs: out.repairs };
         try { fs.writeFileSync(cf, JSON.stringify(r)); } catch {}
         fresh++;
       }
-      facets.push(r.facet);
+      facets.push({ ...r.facet, session_id: r.facet.session_id || m.id });
       repairsCount += (r.repairs?.unmapped_keys?.length || 0) + (r.repairs?.coerced_types?.length || 0);
       process.stdout.write(`  [${i + 1}/${picked.length}] 已完成（新 ${fresh} · 缓存 ${cached} · 失败 ${failed}）      \r`);
     }
@@ -164,7 +168,7 @@ async function main() {
       process.exitCode = 1; return;
     }
     const metaAgg = aggregateMetas(metas);
-    const facetAgg = aggregateFacets(facets);
+    const facetAgg = aggregateFacets(facets, { metas: picked });
 
     // L5 叙事合成：数字已算好，这一层只把它们写成人话 + 引用具体证据。
     // 缺了它，产出就只是一张统计报表。
@@ -182,8 +186,8 @@ async function main() {
     const days_ = picked.map((m) => m.startedAt).filter(Boolean);
     const spanDays = days_.length ? Math.round((Math.max(...days_) - Math.min(...days_)) / 864e5) : 0;
     const html = renderHtml({ metaAgg, facetAgg, narrative, meta: {
-      generatedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      providers: used, windowDays: days, spanDays, version: '0.2.0', repairsCount } });
+      generatedAt: new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',  // 标时区，否则本地时间会被误读
+      providers: used, windowDays: days, spanDays, version: '0.2.1', repairsCount } });
     const out = String(flag('out', join(process.cwd(), 'adi-report.html')));
     fs.writeFileSync(out, html);
     console.log(`  报告已生成: ${out}`);

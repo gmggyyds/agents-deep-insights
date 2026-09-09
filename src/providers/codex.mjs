@@ -43,7 +43,12 @@ export function discover({ days = 30 } = {}) {
     .sort((a, b) => b.mtime - a.mtime);
 }
 
-const LOW_SIGNAL = /^(<turn_aborted>|<environment_context>|# AGENTS\.md|<permissions instructions>)/;
+/**
+ * 这些不是人打的字，不能算进 userMessages——否则会污染 substantive 判定与采样排序。
+ * <codex_internal_context 是 Codex 自动续跑注入的，作者本机（0.131.0）不产生这个标记，
+ * 由 0.153.4 上的外部测试发现（该版本 20 条样本里有 84 条被误计）。
+ */
+const LOW_SIGNAL = /^(<turn_aborted>|<environment_context>|<codex_internal_context|# AGENTS\.md|<permissions instructions>|<user_instructions>)/;
 
 /** L1：纯代码提取 session-meta。零 LLM。 */
 export function parse(file) {
@@ -51,7 +56,7 @@ export function parse(file) {
   try { text = readFileSync(file, 'utf8'); } catch { return null; }
   const meta = {
     provider: 'codex', id: null, path: file, cwd: null, model: null,
-    startedAt: null, endedAt: null,
+    startedAt: null, endedAt: null, forkedFrom: null,
     userMessages: 0, assistantMessages: 0, toolCalls: 0,
     toolCounts: {}, toolFailures: 0, userInterruptions: 0,
     gitCommits: 0, gitPushes: 0, responseGaps: [], transcript: [],
@@ -66,6 +71,7 @@ export function parse(file) {
     if (d.type === 'session_meta') {
       const pl = d.payload || {};
       meta.id ||= pl.id || null; meta.cwd ||= pl.cwd || null;
+      meta.forkedFrom ||= pl.forked_from_id || null;
       continue;
     }
     if (d.type !== 'response_item') continue;

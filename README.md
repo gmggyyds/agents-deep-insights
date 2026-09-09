@@ -12,7 +12,8 @@
 npx github:gmggyyds/agents-deep-insights          # 上图这个，2 秒出结果，不花额度
 ```
 
-支持 **Codex CLI** 与 **Claude Code**。全程在你的机器上运行——不联网上传，没有遥测，没有账号。
+支持 **Codex CLI** 与 **Claude Code**。采集与统计全部在本地完成，没有遥测、没有账号、没有第三方服务器。
+`run` 做深度分析时，会把**脱敏后的会话片段**发给**你自己已经配置好的模型**（`codex exec`）。
 
 > 嫌命令长可以先装：`npm i -g github:gmggyyds/agents-deep-insights`，之后直接敲 `adi`。
 > npm registry 版本尚未发布。
@@ -21,7 +22,11 @@ npx github:gmggyyds/agents-deep-insights          # 上图这个，2 秒出结�
 
 ## 🔒 先说隐私
 
-- 会话内容**只在本地读取**，只发给**你自己配置的** LLM（`codex exec`），不经过任何第三方服务器。
+- **哪些步骤联网，说清楚**：
+  `stats` / `doctor` **完全本地**，不联网、不调用模型；
+  `run` 会把脱敏后的会话片段发给你自己配置的模型（`codex exec`）——这一步必然联网，
+  但走的是你自己的凭证与额度，不经过本工具的任何服务器（本工具没有服务器）；
+  首次 `npx` 拉取源码本身也会联网。
 - 采集层**默认脱敏**：JWT、`sk-`/`ghp_`/`xoxb-`/`AKIA` 类密钥、URL 里的 token、邮箱、私钥块、超长串，
   在任何内容进入模型之前就被替换掉。
   > 这不是假想需求。开发过程中从一段真实会话提取内容时，里面直接带着一个可用的登录 token。

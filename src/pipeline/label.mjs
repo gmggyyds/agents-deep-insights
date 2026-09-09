@@ -63,7 +63,7 @@ function EXEC_OPTS(input, timeout, cwd) {
   return { input, cwd, stdio: ['pipe', 'pipe', 'pipe'], timeout, maxBuffer: 64 * 1024 * 1024 };
 }
 
-export function compactTranscript(lines, maxChars = 14000) {
+export function compactTranscript(lines, maxChars = 24000) {
   const out = []; let prev = null, run = 0;
   for (const l of lines) {
     if (l.startsWith('[tool]') && l === prev) { run++; continue; }
@@ -71,7 +71,14 @@ export function compactTranscript(lines, maxChars = 14000) {
     out.push(l); prev = l;
   }
   if (run) out.push(`  (上一工具重复 ${run} 次)`);
-  return redact(out.join('\n')).slice(0, maxChars);
+  const text = redact(out.join('\n'));
+  if (text.length <= maxChars) return text;
+  // 保留头尾：会话结尾往往是最终状态、验收与用户确认，只留开头会让模型
+  // 从前半段推断整个会话的结局。外部测试发现 19/20 条样本都撞到了旧上限。
+  const head = Math.floor(maxChars * 0.6), tail = maxChars - head - 80;
+  return text.slice(0, head)
+    + `\n\n…（中间省略约 ${text.length - maxChars} 字符）…\n\n`
+    + text.slice(-tail);
 }
 
 export function labelWithCodex(meta, { model, strict = true, timeoutMs = 180000 } = {}) {

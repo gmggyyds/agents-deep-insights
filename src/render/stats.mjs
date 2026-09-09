@@ -16,7 +16,8 @@ export function renderStats(a, { providers, windowDays, warnings = [] }) {
   const L = [];
   L.push('');
   L.push('  agents-deep-insights · stats');
-  L.push(`  近 ${windowDays} 天 · 数据源 ${providers.join(' + ')} · 全部本地计算，未联网`);
+  const win = windowDays > 0 ? `近 ${windowDays} 天` : '全部时间';
+  L.push(`  ${win} · 数据源 ${providers.join(' + ')} · 纯本地计算，本命令不联网、不调用模型`);
   L.push('  ' + '─'.repeat(58));
   L.push('');
   const noise = a.sessions - a.substantive;

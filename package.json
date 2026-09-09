@@ -1,15 +1,38 @@
 {
   "name": "agents-deep-insights",
-  "version": "0.2.0",
-  "description": "Turn your local AI coding-agent sessions into an actionable friction report. Runs fully offline; nothing leaves your machine.",
+  "version": "0.2.1",
+  "description": "Turn your local AI coding-agent sessions into an actionable friction report. Analysis runs locally; only redacted excerpts go to the LLM you already configured.",
   "type": "module",
-  "bin": { "adi": "./src/cli.mjs" },
-  "files": ["src", "docs/DESIGN.md", "README.md", "LICENSE"],
-  "engines": { "node": ">=18" },
-  "scripts": { "test": "node --test tests/normalize.test.mjs tests/redact.test.mjs tests/sample.test.mjs" },
-  "keywords": ["codex", "claude-code", "ai-agent", "developer-productivity", "session-analysis", "insights"],
+  "bin": {
+    "adi": "./src/cli.mjs"
+  },
+  "files": [
+    "src",
+    "docs/DESIGN.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test tests/normalize.test.mjs tests/redact.test.mjs tests/sample.test.mjs tests/external-findings.test.mjs"
+  },
+  "keywords": [
+    "codex",
+    "claude-code",
+    "ai-agent",
+    "developer-productivity",
+    "session-analysis",
+    "insights"
+  ],
   "license": "MIT",
-  "repository": { "type": "git", "url": "git+https://github.com/gmggyyds/agents-deep-insights.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gmggyyds/agents-deep-insights.git"
+  },
   "homepage": "https://github.com/gmggyyds/agents-deep-insights#readme",
-  "bugs": { "url": "https://github.com/gmggyyds/agents-deep-insights/issues" }
+  "bugs": {
+    "url": "https://github.com/gmggyyds/agents-deep-insights/issues"
+  }
 }

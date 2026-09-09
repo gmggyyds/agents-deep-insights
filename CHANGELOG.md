@@ -13,6 +13,50 @@
 - 跨工具同尺对比（同一类摩擦在 Codex 与 Claude Code 上是否都排前列）
 - 周度清单出口：未完成 / 半成品 / 已出 bug / 可合并
 
+## [0.2.1] - 2026-09-09
+
+由两位外部测试者在 macOS(codex 0.153.4) 与 Windows 上实测反馈，逐条修复。
+这些问题作者本机全部测不出来——版本不同、平台不同，或者功能承诺了却没实现。
+
+### 修复 — 隐私与安全
+- **脱敏漏掉 JSON/YAML 凭证字段**（`access_token` / `app_secret` / `password` / `api_key` 等）
+  和 **Authorization / Proxy-Authorization 头**，且 `auditRedaction` 对这些形态同样漏检——
+  **自检也是假绿的**。已补齐规则，并让探针与规则一一对应。
+- `doctor --issue` 输出包含本机绝对路径（含用户名）。该输出是设计给公开 issue 用的，
+  现统一折叠为 `~` 形式。
+
+### 修复 — 功能与承诺不符
+- **规则候选没有落实 user_actionable 过滤**。README 明确承诺「只从你能改的摩擦生成规则」，
+  代码里只按会话数过滤——3 条纯环境故障样本照样产出规则候选。
+- **文案过度承诺**：package.json 与 CLI help 写「全程离线，数据不出本机」，但 run 会把
+  脱敏片段发给你配置的模型。现按步骤说清：stats/doctor 完全本地；run 联网但走你自己的
+  凭证与额度、不经过本工具的服务器（本工具没有服务器）；npx 首次拉源码也联网。
+
+### 修复 — 跨平台
+- `doctor --probe` 写死 `/tmp`，Windows 上 ENOENT 直接退出 1。改用 os.tmpdir()。
+- 项目名解析用 `cwd.split('/')`，Windows 路径会整个当成项目名。改为同时支持两种分隔符。
+
+### 修复 — 统计准确性
+- **缓存指纹只包含转录长度**，内容变了但长度相同会命中旧缓存、复用过时结果。
+  改为对脱敏后文本做哈希（v1 到 v2，旧缓存自然失效）。
+- **自动续跑被计入用户消息**：`<codex_internal_context` 开头的注入内容不是人打的字。
+  该标记较新 Codex 版本才有，作者本机 0.131.0 不产生；外部 0.153.4 上 20 条样本里 84 条被误计。
+- **fork 会话的共同历史重复计数**：父子会话继承同一段历史，「你反复说过的话」因此虚高。
+  现按 fork 家族归并，家族内同一句只算一次。
+- **超长会话只保留开头**（每消息 400 字符、总量 14000 字符），外部实测 19/20 条撞上限，
+  会话结尾的最终状态与确认从未进入模型，结论建立在半截证据上。
+  改为保留首尾、省略中段并标注省略量，上限提到 24000。
+
+### 变更 — 表述
+- 报告标明样本范围（顶部数字取自全部会话，摩擦与归因取自深度分析样本）、
+  区分「模型打标」与「代码汇总」、说明超长会话的覆盖面。
+- 报告生成时间标注 UTC。
+- `stats --days 0` 此前显示「近 0 天」，改为「全部时间」。
+- 窄窗（<820px）下规则的会话数标签会压住正文，改为静态流式排布。
+
+### 新增
+- `tests/external-findings.test.mjs` — 上述每条问题的回归用例，测试总数 22 到 30。
+
 ## [0.2.0] - 2026-09-09
 
 ### 新增
@@ -89,7 +133,8 @@
 - 仅在 macOS + codex-cli 0.131.0 + gpt-5.5 上实测。
 - codex-cli 0.131.0 无法使用账号默认模型（需 `--model gpt-5.5` 或升级 Codex）。
 
-[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.1.0...v0.1.1

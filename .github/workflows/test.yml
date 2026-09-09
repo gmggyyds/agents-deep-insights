@@ -14,6 +14,6 @@ jobs:
         with: { node-version: '${{ matrix.node }}' }
       # 零依赖，无需 npm install
       # 显式列文件：node --test 的 glob 支持是 Node 22+ 才有的，18/20 不认
-      - run: node --test tests/normalize.test.mjs tests/redact.test.mjs tests/sample.test.mjs
+      - run: node --test tests/normalize.test.mjs tests/redact.test.mjs tests/sample.test.mjs tests/external-findings.test.mjs
       - name: 冒烟：无数据环境下不能崩
         run: node src/cli.mjs doctor
