@@ -91,7 +91,14 @@ async function main() {
   if (cmd === 'stats') {
     const { metas, used, warnings } = loadMetas(days, only);
     if (!metas.length) {
-      console.error('\n  没找到任何会话记录。跑 `adi doctor` 看看数据源在不在。\n');
+      // 区分「完全没有数据」和「这个时间窗内没有数据」——后者提示查数据源是误导
+      const anywhere = days > 0 ? loadMetas(0, only).metas.length : 0;
+      if (anywhere > 0) {
+        console.error(`\n  近 ${days} 天内没有会话，但更早的时间里有 ${anywhere} 个。`);
+        console.error(`  放宽时间窗试试：\`adi stats --days 30\`，或 \`--days 0\` 看全部。\n`);
+      } else {
+        console.error('\n  没找到任何会话记录。跑 `adi doctor` 看看数据源在不在。\n');
+      }
       process.exitCode = 1; return;
     }
     const a = aggregateMetas(metas);
