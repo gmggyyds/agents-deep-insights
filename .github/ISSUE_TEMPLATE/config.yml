@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 安全或隐私问题
+    url: https://github.com/gmggyyds/agents-deep-insights/security/advisories/new
+    about: 脱敏漏洞、凭证泄露等请走私密报告，不要开公开 issue

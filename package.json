@@ -1,0 +1,15 @@
+{
+  "name": "agents-deep-insights",
+  "version": "0.1.2",
+  "description": "Turn your local AI coding-agent sessions into an actionable friction report. Runs fully offline; nothing leaves your machine.",
+  "type": "module",
+  "bin": { "adi": "./src/cli.mjs" },
+  "files": ["src", "docs/DESIGN.md", "README.md", "LICENSE"],
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node --test tests/normalize.test.mjs tests/redact.test.mjs tests/sample.test.mjs" },
+  "keywords": ["codex", "claude-code", "ai-agent", "developer-productivity", "session-analysis", "insights"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/gmggyyds/agents-deep-insights.git" },
+  "homepage": "https://github.com/gmggyyds/agents-deep-insights#readme",
+  "bugs": { "url": "https://github.com/gmggyyds/agents-deep-insights/issues" }
+}

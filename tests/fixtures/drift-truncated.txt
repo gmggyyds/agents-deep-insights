@@ -1,0 +1,2 @@
+```json
+{"outcome":"mostly_achieved","session_type":"multi_task","friction_counts":{"buggy_code":3,"tool_failed":1

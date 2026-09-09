@@ -1,0 +1,33 @@
+name: Bug 反馈
+description: 工具跑不起来、报错、或者数字明显不对
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先跑 `adi doctor --issue`，把输出整段贴到下面第一个框里。
+        它只含环境与计数，**不含任何会话内容**，可以安全地贴在公开仓库。
+  - type: textarea
+    id: doctor
+    attributes:
+      label: adi doctor --issue 的输出
+      render: markdown
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: 你运行了什么命令
+      placeholder: adi run --days 30 --limit 20
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望看到什么 / 实际看到什么
+    validations: { required: true }
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我确认粘贴的内容里没有真实凭证、客户数据或商业信息
+          required: true

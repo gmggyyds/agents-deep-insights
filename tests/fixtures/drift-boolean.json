@@ -1,0 +1,34 @@
+{
+ "outcome": "mostly_achieved",
+ "session_type": "iterative_refinement",
+ "goal_categories": {
+  "debug_investigate": false,
+  "implement_feature": true,
+  "fix_bug": false,
+  "write_script_tool": true,
+  "refactor_code": false,
+  "configure_system": false,
+  "create_pr_commit": false,
+  "analyze_data": true,
+  "understand_codebase": false,
+  "write_tests": true,
+  "write_docs": true,
+  "deploy_infra": false,
+  "warmup_minimal": false
+ },
+ "friction_counts": {
+  "misunderstood_request": 0,
+  "wrong_approach": 0,
+  "buggy_code": 0,
+  "user_rejected_action": 0,
+  "claude_got_blocked": 2,
+  "user_stopped_early": 5,
+  "wrong_file_or_location": 1,
+  "excessive_changes": 0,
+  "slow_or_verbose": 0,
+  "tool_failed": 2,
+  "user_unclear": 0,
+  "external_issue": 2
+ },
+ "friction_detail": "The user interrupted several times; a tool failed twice; an external path was unavailable."
+}

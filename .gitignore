@@ -1,0 +1,4 @@
+node_modules/
+*.log
+adi-report.html
+.DS_Store

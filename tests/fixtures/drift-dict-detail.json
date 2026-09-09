@@ -1,0 +1,38 @@
+{
+ "outcome": "mostly_achieved",
+ "session_type": "iterative_refinement",
+ "goal_categories": {
+  "debug_investigate": 0,
+  "implement_feature": 1,
+  "fix_bug": 0,
+  "write_script_tool": 0,
+  "refactor_code": 0,
+  "configure_system": 0,
+  "create_pr_commit": 0,
+  "analyze_data": 1,
+  "understand_codebase": 0,
+  "write_tests": 0,
+  "write_docs": 0,
+  "deploy_infra": 0,
+  "warmup_minimal": 0
+ },
+ "friction_counts": {
+  "misunderstood_request": 0,
+  "wrong_approach": 0,
+  "buggy_code": 0,
+  "user_rejected_action": 0,
+  "claude_got_blocked": 1,
+  "user_stopped_early": 4,
+  "wrong_file_or_location": 0,
+  "excessive_changes": 0,
+  "slow_or_verbose": 0,
+  "tool_failed": 3,
+  "user_unclear": 0,
+  "external_issue": 2
+ },
+ "friction_detail": {
+  "user_stopped_early": "The user interrupted the task multiple times.",
+  "tool_failed": "A build tool failed twice with the same error.",
+  "external_issue": "An external path was unavailable at first."
+ }
+}

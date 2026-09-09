@@ -1,0 +1,38 @@
+{
+ "outcome": "partially_achieved",
+ "session_type": "single_task",
+ "goal_categories": {
+  "debug_investigate": 0,
+  "implement_feature": 1,
+  "fix_bug": 0,
+  "write_script_tool": 0,
+  "refactor_code": 0,
+  "configure_system": 1,
+  "create_pr_commit": 0,
+  "analyze_data": 1,
+  "understand_codebase": 0,
+  "write_tests": 0,
+  "write_docs": 0,
+  "deploy_infra": 0,
+  "warmup_minimal": 0
+ },
+ "friction_counts": {
+  "misunderstood_request": 0,
+  "wrong_approach": 0,
+  "buggy_code": 0,
+  "user_rejected_action": 0,
+  "claude_got_blocked": 1,
+  "user_stopped_early": 5,
+  "wrong_file_or_location": 1,
+  "excessive_changes": 0,
+  "slow_or_verbose": 0,
+  "tool_failed": 2,
+  "user_unclear": 0,
+  "external_issue": 2
+ },
+ "friction_detail": [
+  "The user interrupted the task multiple times.",
+  "A build tool failed with a signing error.",
+  "An external path was unavailable at first."
+ ]
+}
