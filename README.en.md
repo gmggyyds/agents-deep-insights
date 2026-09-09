@@ -97,6 +97,11 @@ Analyzed sessions are cached by content fingerprint, so re-running does not spen
 
 `adi run` produces something you can act on, not a statistics dashboard:
 
+<img src="docs/media/report.png" alt="report produced by adi run" width="620">
+
+*Real output, generated from synthetic sessions. Note that each item under "what's working" quotes the actual session — a report that cites nothing is worthless. (Report text follows the language of your sessions.)*
+
+
 | Section | Content |
 |---|---|
 | Headline | The single most consequential pattern — not a summary of counts |
