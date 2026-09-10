@@ -113,6 +113,7 @@ padding:5px 14px;font-size:12.5px;cursor:pointer;font-family:inherit}
 .blk h4 .n{float:right;font-size:12px;color:#8a8a8a;background:#f4f1ec;padding:2px 9px;border-radius:20px;font-weight:400}
 .blk.good{border-left:5px solid #5d8a66}.blk.theme{border-left:5px solid #7a8db5}.blk.far{border-left:5px solid #a1789b}
 .note.posture{background:#f4f1ec;font-size:13px}
+.samplewarn{border-width:2px}
 .rulebar{display:flex;gap:10px;align-items:center;margin:14px 0}
 .copyall{background:#b4553f;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13.5px;cursor:pointer;font-family:inherit}
 .copy1{background:#f4f1ec;color:#4a4a4a;border:1.5px solid #ddd8d0;border-radius:7px;padding:5px 12px;font-size:12.5px;cursor:pointer;font-family:inherit}
@@ -143,6 +144,19 @@ ${[[metaAgg.sessions, '你参与的会话', 'Your sessions'],
 `<div class="card"><b>${v}</b><span class="zh">${zh}</span>${BI ? `<span class="en">${en}</span>` : ''}</div>`).join('')}
 </div>
 
+${facetAgg.n < 5 ? `
+<div class="note warn samplewarn"><b>⚠️ 样本量不足以支持「模式」类结论</b><br>
+<span class="zh">这份报告的叙事只基于 <b>${facetAgg.n} 个</b>深度分析会话。
+主题聚类、使用姿态、前瞻这几段需要跨会话的重复才成立，${facetAgg.n} 个会话给不出重复。
+请把下面的叙事当作<b>对这 ${facetAgg.n} 次会话的描述</b>，不是对你工作方式的判断。<br>
+深度分析目前只支持 Codex 会话（Claude Code 的官方记录只有元数据、没有对话正文）。
+想扩大样本：<code>adi run --days 0</code> 放宽到全部时间。</span>
+${BI ? `<span class="en">The narrative below rests on only <b>${facetAgg.n}</b> deeply analyzed session(s).
+Theme clustering, working posture and the horizon section all require repetition across sessions,
+which ${facetAgg.n} session(s) cannot provide. Read the narrative as a <b>description of those
+${facetAgg.n} session(s)</b>, not as a judgement about how you work.<br>
+Deep analysis currently supports Codex sessions only (Claude Code's official records carry
+metadata without transcript text). To widen the sample: <code>adi run --days 0</code>.</span>` : ''}</div>` : ''}
 ${N ? bi(N.headline, E && E.headline, 'div', 'lead') : ''}
 ${(metaAgg.subagentSessions || metaAgg.failureRateCoverage < 0.95) ? `
 <div class="note posture"><b>口径说明</b><br>

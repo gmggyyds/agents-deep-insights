@@ -354,3 +354,14 @@ test('HTML 输出里不得有字面 markdown 加粗（HTML 不渲染 **）', () 
   const literal = h.match(/\*\*[^*\n]{2,60}\*\*/g) || [];
   assert.deepEqual(literal, [], `报告里出现了没被渲染的 **：${literal.join(' / ')}`);
 });
+
+test('样本过少时必须显著警示，不能把 n=1 的描述当成模式', () => {
+  // 查元素，不查类名字符串——CSS 里恒有 .samplewarn 规则。
+  // 本轮这个坑踩了第二次（第一次是 .langbar），所以固定用 <div class="..."> 形式匹配。
+  const el = /<div class="[^"]*\bsamplewarn\b/;
+  const small = renderHtml({ ...renderArgs(null), facetAgg: { ...FAKE_AGG, n: 1 } });
+  assert.match(small, el, 'n=1 时必须出样本量警示');
+  assert.ok(/样本量不足/.test(small), '警示要说清是样本量问题');
+  const big = renderHtml({ ...renderArgs(null), facetAgg: { ...FAKE_AGG, n: 20 } });
+  assert.doesNotMatch(big, el, '样本充足时不该出警示');
+});

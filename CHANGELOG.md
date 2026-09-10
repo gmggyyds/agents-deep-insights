@@ -13,6 +13,31 @@
 - 跨工具同尺对比（同一类摩擦在 Codex 与 Claude Code 上是否都排前列）
 - 周度清单出口：未完成 / 半成品 / 已出 bug / 可合并
 
+## [0.5.1] - 2026-09-10
+
+发布 v0.5.0 后，按同事将要执行的那条命令（`npx --yes github:...`）自己走了一遍
+全新安装路径，发现一个只有在**会话很少**时才暴露的问题。
+
+### 修复：样本过少时仍然输出「模式」类结论
+
+本机近 30 天只有 1 个 Codex 会话，工具照样产出了完整的七段报告——包括
+「主题聚类」和一句自信的头条断言。**1 个会话谈不上聚类**，那是把一次会话的描述
+写成了对用户工作方式的判断。
+
+现在深度分析样本 < 5 时，报告顶部给出显著警示：说明这几段需要跨会话的重复才成立、
+应当把叙事读作对这几次会话的描述、并给出扩大样本的命令（`--days 0`）。
+
+顺带说明清楚：深度分析目前只支持 Codex 会话，因为 Claude Code 的官方 session-meta
+只有元数据、没有对话正文。这一点原先只在报错分支里提过，正常路径上看不到。
+
+### 测试
+
+49 → 50。
+
+**又踩了同一个坑**：新测试判「有没有警示」时匹配类名字符串 `samplewarn`，
+而 CSS 里恒有这条规则——查的是样式表不是元素，样本充足时也恒真。
+本轮这已经是第二次（第一次是 `langbar`），现在统一改成匹配 `<div class="...">` 形式。
+
 ## [0.5.0] - 2026-09-10
 
 一位外部使用者用 v0.4.0 跑了自己 30 天的 Codex 记录，在交付报告里对工具本身提了三条批评。
@@ -321,7 +346,8 @@ v0.3.0 修第一层（单条消息 400→1200）时，**给第二层制造了回
 - 仅在 macOS + codex-cli 0.131.0 + gpt-5.5 上实测。
 - codex-cli 0.131.0 无法使用账号默认模型（需 `--model gpt-5.5` 或升级 Codex）。
 
-[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.3.0...v0.3.1

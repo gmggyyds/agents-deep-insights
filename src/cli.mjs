@@ -197,7 +197,7 @@ async function main() {
     const spanDays = days_.length ? Math.round((Math.max(...days_) - Math.min(...days_)) / 864e5) : 0;
     const html = renderHtml({ metaAgg, facetAgg, narrative, narrativeEn, meta: {
       generatedAt: new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',  // 标时区，否则本地时间会被误读
-      providers: used, windowDays: days, spanDays, version: '0.5.0', repairsCount } });
+      providers: used, windowDays: days, spanDays, version: '0.5.1', repairsCount } });
     const out = String(flag('out', join(process.cwd(), 'adi-report.html')));
     fs.writeFileSync(out, html);
     console.log(`  报告已生成: ${out}`);
