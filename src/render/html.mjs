@@ -15,6 +15,7 @@ const LABEL = {
   warmup_minimal: '缓存预热',
   user_actionable: '你自己能改的', agent_capability: '助手能力所限', environmental: '环境或工具问题',
   unknown: '原因未确定',
+  delegate: '派活（已知要什么）', deliberate: '想清楚（还没定）', steer: '把关与定规则',
 };
 const L = (k) => LABEL[k] || k;
 
@@ -35,6 +36,9 @@ const LABEL_EN = {
   user_actionable: 'Yours to fix', agent_capability: 'Model limits',
   environmental: 'Environment or tooling', unknown: 'Cause undetermined',
 };
+LABEL_EN.delegate = 'Delegate (you knew what you wanted)';
+LABEL_EN.deliberate = 'Deliberate (still working it out)';
+LABEL_EN.steer = 'Steer (gate and set rules)';
 const LE = (k) => LABEL_EN[k] || k;
 
 export function renderHtml({ metaAgg, facetAgg, meta, narrative, narrativeEn }) {
@@ -113,6 +117,13 @@ padding:5px 14px;font-size:12.5px;cursor:pointer;font-family:inherit}
 .blk h4 .n{float:right;font-size:12px;color:#8a8a8a;background:#f4f1ec;padding:2px 9px;border-radius:20px;font-weight:400}
 .blk.good{border-left:5px solid #5d8a66}.blk.theme{border-left:5px solid #7a8db5}.blk.far{border-left:5px solid #a1789b}
 .note.posture{background:#f4f1ec;font-size:13px}
+.note.cross-thin{border-width:2px}
+table.cross{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px;background:#fff;border:1.5px solid #ddd8d0;border-radius:12px;overflow:hidden}
+table.cross th{text-align:left;padding:10px 12px;background:#f4f1ec;color:#6a6a6a;font-size:12.5px;font-weight:600}
+table.cross td{padding:10px 12px;border-top:1px solid #eeebe6;color:#3d3d3d}
+table.cross td em{font-style:normal;color:#b4553f;font-size:12.5px}
+table.cross td.ins{color:#8a8a8a}
+@media(max-width:820px){table.cross{display:block;overflow-x:auto}}
 .rulebar{display:flex;gap:10px;align-items:center;margin:14px 0}
 .copyall{background:#b4553f;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13.5px;cursor:pointer;font-family:inherit}
 .copy1{background:#f4f1ec;color:#4a4a4a;border:1.5px solid #ddd8d0;border-radius:7px;padding:5px 12px;font-size:12.5px;cursor:pointer;font-family:inherit}
@@ -250,6 +261,42 @@ ${bi(N.horizon.summary, pick('horizon.summary'), 'div', 'lead')}
 ${(N.horizon.items || []).map((i, ix) => { const e = (pick('horizon.items') || [])[ix]; return `
 <div class="blk far"><h4>${esc(i.title)}${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.title)}</span>' : ''}` : ''}</h4>
 ${bi(i.vision, e && e.vision)}</div>`; }).join('')}` : ''}
+
+${(() => {
+  const cm = facetAgg.collaborationModes || [];
+  if (!cm.length) return '';
+  const cmax = cm[0]?.count || 1;
+  const tot = cm.reduce((a, b) => a + b.count, 0) || 1;
+  const X = facetAgg.collaborationCross || {};
+  const pctOf = (n) => (n / tot * 100).toFixed(1);
+  const share = cm.map((m) => `<div class="card"><b>${pctOf(m.count)}%</b><span class="zh">${esc(L(m.key))}</span>${BI ? `<span class="en">${esc(LE(m.key))}</span>` : ''}</div>`).join('');
+  const rows = Object.entries(X.byMode || {}).map(([mode, d]) => {
+    if (d.insufficient) {
+      return `<tr><td>${esc(L(mode))}</td><td colspan="3" class="ins">样本不足（有 ${d.with} / 无 ${d.without} 个会话），不下结论</td></tr>`;
+    }
+    const sd = d.successRateDelta;
+    const fd = d.frictionDelta;
+    const sgn = (v, digits, suffix) => (v > 0 ? '+' : '') + v.toFixed(digits) + suffix;
+    return `<tr><td>${esc(L(mode))}</td>
+      <td>${d.with.n} / ${d.without.n}</td>
+      <td>${d.with.successRate == null ? '—' : (d.with.successRate * 100).toFixed(0) + '%'} vs ${d.without.successRate == null ? '—' : (d.without.successRate * 100).toFixed(0) + '%'}${sd == null ? '' : ` <em>${sgn(sd * 100, 0, 'pp')}</em>`}</td>
+      <td>${d.with.frictionPerSession.toFixed(1)} vs ${d.without.frictionPerSession.toFixed(1)} <em>${sgn(fd, 1, '')}</em></td></tr>`;
+  }).join('');
+  return `
+${biH('你在要求 AI 做什么', 'What You Are Asking For')}
+${bi('把你发出的每一条消息按「在要求什么」分三类。一条消息常常同时要求好几件事——「你先去找，给我参考，我再纠正你」三类都算，所以三者相加会超过 100%。这里量的是注意力分布，不是水平高低。',
+     'Every message you sent, classified by what it asks for. One message often asks for several things at once, so the three add up to more than 100%. This describes where your attention went, not how good you are.')}
+<div class="cards">${share}</div>
+${X.insufficient ? '<div class="note cross-thin">已打标会话不足，无法做交叉分析。</div>' : `
+${bi('这三类跟结果有没有关系', 'Does any of this relate to how sessions turn out')}
+<table class="cross"><thead><tr><th>模式</th><th>有 / 无（会话数）</th><th>成功率（有 vs 无）</th><th>每会话摩擦数</th></tr></thead>
+<tbody>${rows}</tbody></table>
+<div class="note posture"><b>怎么读这张表：</b>它是<b>相关性，不是因果</b>。简单任务天然既不需要「想清楚」又天然容易成功，这一条就足以把关系拉成反向。
+成功率的分母只用能判定的会话（结果说不清的单列，不塞进任何一边）。
+任一组少于 5 个会话时直接标「样本不足」，不给百分比——小样本的差异没有意义。
+<br><b>这几个占比不是分数。</b>同一个人在不同月份差别很大：实测同一使用者相隔三个月的三类占比从 6.3/75.8/17.9 变成 7.2/78.6/14.2，主要由那段时间在干什么类型的活决定，不是能力变化。</div>`}
+`;
+})()}
 
 <details><summary>展开：支撑这些结论的原始统计</summary>
 <h3 style="font-size:17px;margin:18px 0 10px">你主要在做什么</h3>

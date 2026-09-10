@@ -16,7 +16,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test tests/normalize.test.mjs tests/redact.test.mjs tests/sample.test.mjs tests/external-findings.test.mjs"
+    "test": "node --test tests/normalize.test.mjs tests/redact.test.mjs tests/sample.test.mjs tests/external-findings.test.mjs tests/collab-mode.test.mjs"
   },
   "keywords": [
     "codex",

@@ -1,5 +1,5 @@
 /** L4 聚合。纯代码，零 LLM —— 所有计数/排序/门槛判定都在这里，不交给模型。 */
-import { FRICTION, GOAL_CATEGORIES, ATTRIBUTION } from '../schema/facet.mjs';
+import { FRICTION, GOAL_CATEGORIES, ATTRIBUTION , COLLAB_MODE } from '../schema/facet.mjs';
 import { isSubstantive, isSubagent } from './sample.mjs';
 
 export function aggregateMetas(metas) {
@@ -87,6 +87,78 @@ function forkFamilyOf(metas) {
   return fam;
 }
 
+
+/** outcome 三分：达成 / 未达成 / 说不清。说不清单列，不算成功也不算失败。 */
+const GOOD_OUTCOMES = new Set(['fully_achieved', 'mostly_achieved']);
+const BAD_OUTCOMES = new Set(['not_achieved', 'partially_achieved']);
+
+/** 一个会话有没有被打过协作模式的标（旧缓存 facet 没有这个字段，必须排除而不是当成 0）。 */
+function hasModeLabel(f) {
+  const c = f?.collaboration_mode_counts;
+  return !!c && COLLAB_MODE.some((k) => typeof c[k] === 'number');
+}
+
+function groupProfile(list) {
+  let good = 0, bad = 0, unclear = 0, friction = 0, userActionable = 0, frictionTotal = 0;
+  for (const f of list) {
+    if (GOOD_OUTCOMES.has(f?.outcome)) good++;
+    else if (BAD_OUTCOMES.has(f?.outcome)) bad++;
+    else unclear++;
+    const counts = f?.friction_counts || {};
+    const attrs = f?.friction_attribution || {};
+    for (const k of FRICTION) {
+      const n = counts[k] || 0;
+      if (!n) continue;
+      friction += n; frictionTotal += n;
+      if (attrs[k] === 'user_actionable') userActionable += n;
+    }
+  }
+  const decidable = good + bad;
+  return {
+    n: list.length,
+    good, bad, unclear,
+    // 分母只用可判定集——判不出来的不塞进任何一边充数（同工具失败率的口径）
+    successRate: decidable ? good / decidable : null,
+    decidable,
+    frictionPerSession: list.length ? friction / list.length : 0,
+    userActionableShare: frictionTotal ? userActionable / frictionTotal : null,
+  };
+}
+
+/**
+ * 协作模式 × 结果 的交叉。
+ *
+ * 回答的问题：**一个会话里出现过某种协作模式，跟这个会话的结果有没有关系？**
+ * 例如「没有任何 deliberate（想清楚）就直接派活的会话，是不是更容易出问题？」
+ *
+ * 🔴 这是**相关性，不是因果**。渲染层必须照此措辞。混杂因素是真实存在的：
+ * 简单任务天然不需要 deliberate 且天然容易成功，会把关系拉成反向。
+ * 🔴 任一组样本不足 MIN_GROUP 就返回 insufficient——小样本的百分比差异毫无意义。
+ */
+const MIN_GROUP = 5;
+
+export function crossCollabOutcome(facets) {
+  const labeled = facets.filter(hasModeLabel);
+  const out = { labeledSessions: labeled.length, byMode: {} };
+  if (labeled.length < MIN_GROUP * 2) { out.insufficient = true; return out; }
+  for (const mode of COLLAB_MODE) {
+    const withMode = labeled.filter((f) => (f.collaboration_mode_counts?.[mode] || 0) > 0);
+    const without = labeled.filter((f) => !(f.collaboration_mode_counts?.[mode] > 0));
+    if (withMode.length < MIN_GROUP || without.length < MIN_GROUP) {
+      out.byMode[mode] = { insufficient: true, with: withMode.length, without: without.length };
+      continue;
+    }
+    const a = groupProfile(withMode), b = groupProfile(without);
+    out.byMode[mode] = {
+      with: a, without: b,
+      successRateDelta: (a.successRate != null && b.successRate != null)
+        ? a.successRate - b.successRate : null,
+      frictionDelta: a.frictionPerSession - b.frictionPerSession,
+    };
+  }
+  return out;
+}
+
 export function aggregateFacets(facets, { noiseFloor = NOISE_FLOOR, metas = null } = {}) {
   const family = metas ? forkFamilyOf(metas) : null;
   const sum = (keys, field) => {
@@ -100,6 +172,7 @@ export function aggregateFacets(facets, { noiseFloor = NOISE_FLOOR, metas = null
   };
   const friction = sum(FRICTION, 'friction_counts');
   const goals = sum(GOAL_CATEGORIES, 'goal_categories');
+  const collab = sum(COLLAB_MODE, 'collaboration_mode_counts');
   // 归因汇总由「该类别的归因 × 该类别的次数」推导，不再单独存会话级总数。
   // unknown 单列——原因不明的失败不塞进 environmental 充数。
   const attribution = { user_actionable: 0, agent_capability: 0, environmental: 0, unknown: 0 };
@@ -164,6 +237,8 @@ export function aggregateFacets(facets, { noiseFloor = NOISE_FLOOR, metas = null
       return (by.user_actionable || 0) / total > 0.5;   // 过半会话判定为用户可改
     }).map((f) => ({ ...f, attribution: attrByCategory[f.key] || {} })),
     attributionByCategory: attrByCategory,
+    collaborationModes: rank(collab),
+    collaborationCross: crossCollabOutcome(facets),
     repeatedInstructions: Object.entries(instructions)
       .filter(([, v]) => v >= 2).sort((a, b) => b[1] - a[1])
       .map(([text, n]) => ({ text, n })),

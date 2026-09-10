@@ -76,6 +76,27 @@ export const REACTION = [
   'continue_silently',   // 不评价，直接进入下一步
 ];
 
+/**
+ * 协作模式：这一条用户消息在**要求什么**，不是用户有多厉害。
+ *
+ * 三类来自一个可观察的区分——用户是已经知道要什么、还没想清、还是在对已有产出把关：
+ *   delegate   已知要什么，让 agent 去产出或执行
+ *   deliberate 还没想清，和 agent 一起收敛判断（求方案对比 / 反驳 / 「还有什么我没想到」）
+ *   steer      对已有产出或未来行为把关（验收标准 / 否决 / 「以后都这样」）
+ *
+ * 🔴 **必须多标签计数，不能单标签取主导意图。**
+ * 实测（2026-09-10，2341 条真实指令 + 400 条多标签复核）：35% 的用户消息一句话里
+ * 同时含多类意图（典型：「你先去找，然后给我参考，我再纠正你」= 三类齐全）。
+ * 单标签取主导意图会把 deliberate 从 20.5% 压到 8.2%——**低估 2.5 倍**。
+ * 所以这里是稠密计数：一条消息含几类就给几类各 +1。
+ *
+ * 🔴 **不要据此给用户打分。** 实测同一人 6 月 vs 9 月的三类占比是
+ * 6.3/75.8/17.9 → 7.2/78.6/14.2，变化主要由「当期在干什么类型的活」驱动，
+ * 不是能力变化。占比只是描述注意力分布，聚合层负责把它和 outcome/friction 交叉，
+ * 让读者自己看有没有关系。参见 REACTION 上面那段：别把有争议的解释烤进度量。
+ */
+export const COLLAB_MODE = ['delegate', 'deliberate', 'steer'];
+
 export const ATTRIBUTION = ['user_actionable', 'agent_capability', 'environmental', 'unknown'];
 
 /** 每类摩擦的归因取值；none 表示该类别本次未发生。 */
@@ -101,6 +122,20 @@ export const ALIASES = {
   external_blocker: 'external_issue',
   // 其他
   claude_got_blocked: 'agent_got_blocked',
+  // 协作模式：LLM 易产出的近义词
+  execute: 'delegate',
+  execution: 'delegate',
+  delegation: 'delegate',
+  implement: 'delegate',
+  deliberation: 'deliberate',
+  explore: 'deliberate',
+  exploration: 'deliberate',
+  think: 'deliberate',
+  thinking: 'deliberate',
+  steering: 'steer',
+  review: 'steer',
+  oversight: 'steer',
+  govern: 'steer',
   incorrect_assumption: 'wrong_approach',
   unwanted_output_loop: 'slow_or_verbose',
 };
@@ -143,11 +178,13 @@ export function facetSchema() {
       primary_success: { type: 'string', enum: PRIMARY_SUCCESS },
       claude_helpfulness: { type: 'string', enum: HELPFULNESS },
       user_reaction_counts: denseCounts(REACTION),
+      collaboration_mode_counts: denseCounts(COLLAB_MODE),
     },
     required: [
       'outcome', 'session_type', 'goal_categories', 'friction_counts',
       'friction_attribution', 'friction_detail', 'user_instructions', 'brief_summary',
       'underlying_goal', 'primary_success', 'claude_helpfulness', 'user_reaction_counts',
+      'collaboration_mode_counts',
     ],
   };
 }
@@ -163,4 +200,5 @@ export const COUNT_KEYS_OF = {
   goal_categories: GOAL_CATEGORIES,
   friction_counts: FRICTION,
   user_reaction_counts: REACTION,
+  collaboration_mode_counts: COLLAB_MODE,
 };
