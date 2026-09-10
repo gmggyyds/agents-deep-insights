@@ -1,6 +1,6 @@
 {
   "name": "agents-deep-insights",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Turn your local AI coding-agent sessions into an actionable friction report. Analysis runs locally; only redacted excerpts go to the LLM you already configured.",
   "type": "module",
   "bin": {

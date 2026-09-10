@@ -179,8 +179,8 @@ const FAKE_NARR = {
   how_you_work: { summary: '姿态概述', evidence: '证据中文', implication: '含义中文' },
   impressive: { summary: '概述中文', items: [{ title: '标题中文', detail: '细节中文' }] },
   friction_narrative: { summary: '摘要中文', yours_to_fix: '你能改的中文', model_limits: '能力所限中文', environment: '环境中文' },
-  rules: [{ heading: '规则主题', rule: '中文祈使规则', why: '依据中文', evidence_quote: '你有测试吗', evidence_count: 4 }],
-  next_steps: [{ title: '下一步中文', why_for_you: '原因中文', copyable_prompt: 'Paste me' }],
+  rules: [{ heading: '规则主题', rule: '中文祈使规则', why: '依据中文', evidence_quote: '你有测试吗', friction_key: 'tool_failed' }],
+  next_steps: [{ title: '下一步中文', why_for_you: '原因中文', copyable_prompt: '先不要执行，请把这个任务改写成任务契约' }],
   horizon: { summary: '前瞻中文', items: [{ title: '前瞻标题', vision: '愿景中文' }] },
 };
 const FAKE_EN = {
@@ -189,8 +189,8 @@ const FAKE_EN = {
   how_you_work: { summary: 'Posture', evidence: 'Evidence', implication: 'Implication' },
   impressive: { summary: 'Summary', items: [{ title: 'Title', detail: 'Detail' }] },
   friction_narrative: { summary: 'Summary', yours_to_fix: 'Yours', model_limits: 'Limits', environment: 'Env' },
-  rules: [{ heading: 'Rule heading', rule: 'English imperative rule', why: 'Why', evidence_quote: '你有测试吗', evidence_count: 4 }],
-  next_steps: [{ title: 'Next', why_for_you: 'Why', copyable_prompt: 'Paste me' }],
+  rules: [{ heading: 'Rule heading', rule: 'English imperative rule', why: 'Why', evidence_quote: '你有测试吗', friction_key: 'tool_failed' }],
+  next_steps: [{ title: 'Next', why_for_you: 'Why', copyable_prompt: '先不要执行，请把这个任务改写成任务契约' }],
   horizon: { summary: 'Horizon', items: [{ title: 'T', vision: 'V' }] },
 };
 const FAKE_AGG = {
@@ -218,18 +218,28 @@ test('报告必须有官方那七段，缺一段就是结构性缺失', () => {
 
 test('双语：切到 English 时不得残留未标记的中文块', () => {
   const h = renderHtml(renderArgs(FAKE_EN));
-  // 逐个块级元素检查：含中文却没有 zh 标记的，在 lang-en 下会和英文同时显示
-  const leaks = [];
-  for (const m of h.matchAll(/<(code|p|div|li|h4|h2|span)([^>]*)>([^<]{4,})<\/\1>/g)) {
-    const [, tag, attrs, txt] = m;
-    if (!/[一-鿿]/.test(txt)) continue;
-    const cls = (attrs.match(/class="([^"]*)"/) || [, ''])[1].split(/\s+/);
-    if (cls.includes('zh')) continue;
-    if (cls.includes('quote')) continue;              // 证据句刻意保留原话
-    if (cls.includes('en')) continue;                 // 英文块里引用的原话，同上
-    leaks.push(`<${tag} class="${cls.join(' ')}">${txt.trim().slice(0, 40)}`);
-  }
-  assert.deepEqual(leaks, [], `英文模式下会残留 ${leaks.length} 处中文:\n` + leaks.join('\n'));
+  // 判据：把所有**已标记语言**的元素整个剥掉后，页面上还剩多少中文。
+  //
+  // 两版都翻过车，所以写法很讲究：
+  //   v1 用 `<tag ...>([^<]{4,})</tag>`，要求文本后紧跟闭合标签 —— 看不见
+  //      `<h4>中文<span class="en">…</span></h4>` 这种嵌套，实测漏掉 20 处标题。
+  //   v2 放开成 `[\s\S]*?`，又因为非贪婪遇到同名嵌套（div 套 div）只匹配到
+  //      第一个 </div>，把子元素的开标签留在了内容里，产生 3 处假阳性。
+  // 现在从**内向外**逐层剥：每轮只删「内部不再含同名开标签」的已标记元素，
+  // 反复直到不再变化。剥完剩下的中文才是真的没标记。
+  // 只看 <body>：<head> 里的 <title> 是浏览器标签页文字，不是页面内容
+  let body = (h.split('<body')[1] || h)
+    .replace(/<script[\s\S]*?<\/script>/g, '').replace(/<style[\s\S]*?<\/style>/g, '')
+    // 可粘贴载荷刻意保留原语言：<pre> 里的提示词是给 agent 吃的，
+    // data-rule 是要粘进 AGENTS.md 的规则原文。翻译它们就失去用途。
+    .replace(/<pre[\s\S]*?<\/pre>/g, '')
+    .replace(/data-rule="[^"]*"/g, '');
+  const marked = /<(\w+)[^>]*class="[^"]*\b(?:zh|en|quote)\b[^"]*"[^>]*>((?:(?!<\1[\s>])[\s\S])*?)<\/\1>/;
+  let prev;
+  do { prev = body; body = body.replace(marked, ''); } while (body !== prev);
+  const bare = body.replace(/<[^>]+>/g, ' ');
+  const leaks = (bare.match(/[一-鿿][^\s]{0,30}/g) || []).filter((x) => x.trim());
+  assert.deepEqual(leaks, [], `英文模式下会残留 ${leaks.length} 处中文:\n` + leaks.slice(0, 12).join('\n'));
 });
 
 test('双语：中文规则的 code 必须带 zh 标记（否则英文模式下中英规则同时显示）', () => {

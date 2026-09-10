@@ -83,9 +83,14 @@ export const SYNTHESIS_SCHEMA = {
           rule: { type: 'string' },           // 可直接粘贴的祈使句
           why: { type: 'string' },
           evidence_quote: { type: 'string' }, // 用户原话或具体事件，原文照引
-          evidence_count: { type: 'integer' },
+          // 只让模型指出这条规则依据**哪一类**摩擦；具体会话数由代码从
+          // ruleCandidates 查，模型不得提供任何会被当统计量渲染的数字。
+          // v0.5.1 曾让模型填 evidence_count，它填的是「次数 9」，
+          // 而渲染层写死标签「N 个会话」——报告上出现「9 个会话」，
+          // 可当次总共只分析了 6 个，一眼就是假的。
+          friction_key: { type: 'string' },
         },
-        required: ['heading', 'rule', 'why', 'evidence_quote', 'evidence_count'],
+        required: ['heading', 'rule', 'why', 'evidence_quote', 'friction_key'],
       },
     },
     // ⑥ 新用法：每条带可直接粘贴的提示词
@@ -183,7 +188,9 @@ ${evidence}
 - rules: 0-5 blocks ready to paste into AGENTS.md. Derive ONLY from the rule candidates.
   Each rule is an imperative constraint. evidence_quote must be the user's OWN words
   (verbatim, original language) or a specific named incident — this is what makes the rule credible.
-  Set evidence_count from the candidate list.
+  friction_key must be the exact key of the rule candidate this rule derives from (copy it
+  verbatim from the candidate list above). Do NOT state any counts in your text — the report
+  fills in the real numbers; a number you invent will contradict the computed statistics.
 - next_steps: 2-4 things worth trying, each with a prompt they can paste straight into their agent.
 - horizon: where this practice is heading if they keep going, and 2-3 concrete capabilities
   worth building toward. Ground each in what the data already shows they are doing.

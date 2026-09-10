@@ -122,13 +122,13 @@ padding:5px 14px;font-size:12.5px;cursor:pointer;font-family:inherit}
 .quote{font-size:13px;color:#6a6a6a;border-left:3px solid #ddd8d0;padding:6px 12px;margin:10px 0;background:#faf8f5}
 #copystat{font-size:12.5px;color:#5d8a66}
 </style></head><body class="lang-both"><div class="w">
-<h1>你的 AI 编码摩擦报告</h1>
+<h1><span class="zh">你的 AI 编码摩擦报告</span>${BI ? '<span class="en">Your AI Coding Friction Report</span>' : ''}</h1>
 <p class="sub zh">哪些问题在重复发生，以及其中哪些是你自己能改的。</p>
 ${BI ? '<p class="sub en">Which problems keep recurring, and which of them are yours to fix.</p>' : ''}
-${BI ? `<div class="langbar"><span style="font-size:12.5px;color:#8a8a8a">语言</span>
-<button onclick="setLang('both',this)" class="on">双语对照</button>
-<button onclick="setLang('zh',this)">中文</button>
-<button onclick="setLang('en',this)">English</button></div>` : ''}
+${BI ? `<div class="langbar"><span class="quote" style="font-size:12.5px;color:#8a8a8a">语言 / Language</span>
+<button onclick="setLang('both',this)" class="on quote">双语对照 / Both</button>
+<button onclick="setLang('zh',this)" class="quote">中文</button>
+<button onclick="setLang('en',this)" class="quote">English</button></div>` : ''}
 <p class="meta zh">${esc(meta.generatedAt)} · 数据源 ${esc(meta.providers.join(' + '))} · ${meta.windowDays > 0 ? `近 ${meta.windowDays} 天` : '全部时间'} ·
 深度分析 ${facetAgg.n} 个会话（覆盖 ${esc(meta.spanDays)} 天）· 采集与统计在本地完成，
 仅脱敏后的会话片段发送给你自己配置的模型</p>
@@ -145,7 +145,7 @@ ${[[metaAgg.sessions, '你参与的会话', 'Your sessions'],
 </div>
 
 ${facetAgg.n < 5 ? `
-<div class="note warn samplewarn"><b>⚠️ 样本量不足以支持「模式」类结论</b><br>
+<div class="note warn samplewarn"><b><span class="zh">⚠️ 样本量不足以支持「模式」类结论</span>${BI ? '<span class="en">⚠️ Sample too small to support pattern-level claims</span>' : ''}</b><br>
 <span class="zh">这份报告的叙事只基于 <b>${facetAgg.n} 个</b>深度分析会话。
 主题聚类、使用姿态、前瞻这几段需要跨会话的重复才成立，${facetAgg.n} 个会话给不出重复。
 请把下面的叙事当作<b>对这 ${facetAgg.n} 次会话的描述</b>，不是对你工作方式的判断。<br>
@@ -159,7 +159,7 @@ Deep analysis currently supports Codex sessions only (Claude Code's official rec
 metadata without transcript text). To widen the sample: <code>adi run --days 0</code>.</span>` : ''}</div>` : ''}
 ${N ? bi(N.headline, E && E.headline, 'div', 'lead') : ''}
 ${(metaAgg.subagentSessions || metaAgg.failureRateCoverage < 0.95) ? `
-<div class="note posture"><b>口径说明</b><br>
+<div class="note posture"><b><span class="zh">口径说明</span>${BI ? '<span class="en">How these numbers are counted</span>' : ''}</b><br>
 <span class="zh">${metaAgg.subagentSessions ? `另有 ${metaAgg.subagentSessions} 个会话由子代理派生（人未参与），
 它们的 ${metaAgg.subagentToolCalls} 次工具调用与 ${metaAgg.subagentUserMessages} 条任务书<b>未计入</b>上面的数字。` : ''}
 ${metaAgg.failureRateCoverage < 0.95 ? `工具失败率的分母只用能拿到退出码的调用，
@@ -174,28 +174,29 @@ covering ${Math.round(metaAgg.failureRateCoverage * 100)}% of calls; the rest ar
 ${N && N.themes && N.themes.length ? `
 ${biH('你主要在做什么', 'What You Work On')}
 ${N.themes.map((t, i) => { const e = (pick('themes') || [])[i]; return `
-<div class="blk theme"><h4>${esc(t.name)}${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.name)}</span>' : ''}` : ''}
+<div class="blk theme"><h4><span class="zh">${esc(t.name)}</span>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.name)}</span>' : ''}` : ''}
 <span class="n"><span class="zh">${t.session_estimate} 个会话</span>${BI ? `<span class="en">${t.session_estimate} sessions</span>` : ''}</span></h4>
 ${bi(t.detail, e && e.detail)}</div>`; }).join('')}` : ''}
 
 ${N && N.how_you_work ? `
 ${biH('你是怎么用它的', 'How You Use Codex')}
 ${bi(N.how_you_work.summary, pick('how_you_work.summary'), 'div', 'lead')}
-<div class="blk"><h4>支撑证据 ${BI ? '<span class="en-inline en">/ Evidence</span>' : ''}</h4>
+<div class="blk"><h4><span class="zh">支撑证据</span> ${BI ? '<span class="en-inline en">/ Evidence</span>' : ''}</h4>
 ${bi(N.how_you_work.evidence, pick('how_you_work.evidence'))}</div>
-<div class="blk"><h4>这意味着什么 ${BI ? '<span class="en-inline en">/ What it implies</span>' : ''}</h4>
+<div class="blk"><h4><span class="zh">这意味着什么</span> ${BI ? '<span class="en-inline en">/ What it implies</span>' : ''}</h4>
 ${bi(N.how_you_work.implication, pick('how_you_work.implication'))}</div>
-<div class="note posture"><b>姿态数据</b>（Codex 独有，Claude Code 的 /insights 没有这些信号）<br>
-授权策略 ${Object.entries(metaAgg.approvalPolicies || {}).map(([k, v]) => `${esc(k)} ${v}`).join(' · ') || '未记录'} ·
-沙箱 ${Object.entries(metaAgg.sandboxPolicies || {}).map(([k, v]) => `${esc(k)} ${v}`).join(' · ') || '未记录'} ·
-入口 ${Object.entries(metaAgg.originators || {}).map(([k, v]) => `${esc(k)} ${v}`).join(' · ') || '未记录'} ·
-${metaAgg.planSessions || 0}/${metaAgg.sessions} 个会话有显式任务分解</div>` : ''}
+<div class="note posture"><b><span class="zh">姿态数据</span>${BI ? '<span class="en">Operating posture</span>' : ''}</b><span class="zh">（Codex 独有，Claude Code 的 /insights 没有这些信号）</span>${BI ? '<span class="en"> (Codex-only; Claude Code /insights has no equivalent signal)</span>' : ''}<br>
+${(() => { const d = (o) => Object.entries(o || {}).map(([k, v]) => `${esc(k)} ${v}`).join(' · ');
+  const ap = d(metaAgg.approvalPolicies), sb = d(metaAgg.sandboxPolicies), og = d(metaAgg.originators);
+  const zh = `授权策略 ${ap || '未记录'} · 沙箱 ${sb || '未记录'} · 入口 ${og || '未记录'} · ${metaAgg.planSessions || 0}/${metaAgg.sessions} 个会话有显式任务分解`;
+  const en = `approval ${ap || 'not recorded'} · sandbox ${sb || 'not recorded'} · entry ${og || 'not recorded'} · ${metaAgg.planSessions || 0}/${metaAgg.sessions} sessions with an explicit task plan`;
+  return `<span class="zh">${zh}</span>` + (BI ? `<span class="en">${en}</span>` : ''); })()}</div>` : ''}
 
 ${N && N.impressive ? `
 ${biH('你做得漂亮的地方', 'Impressive Things You Did')}
 ${bi(N.impressive.summary, pick('impressive.summary'), 'p', 'nar')}
 ${(N.impressive.items || []).map((i, ix) => { const e = (pick('impressive.items') || [])[ix]; return `
-<div class="blk good"><h4>${esc(i.title)}${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.title)}</span>' : ''}` : ''}</h4>
+<div class="blk good"><h4><span class="zh">${esc(i.title)}</span>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.title)}</span>' : ''}` : ''}</h4>
 ${bi(i.detail, e && e.detail)}</div>`; }).join('')}` : ''}
 
 ${biH('哪里出了问题', 'Where Things Go Wrong')}
@@ -213,14 +214,14 @@ do not disappear by rephrasing your prompts — putting your attention on the fi
 has the highest return.</div>` : ''}
 
 ${N && N.friction_narrative ? `
-<div class="blk mine"><h4>你自己能改的 ${BI ? '<span class="en-inline en">/ Yours to fix</span>' : ''}</h4>
+<div class="blk mine"><h4><span class="zh">你自己能改的</span> ${BI ? '<span class="en-inline en">/ Yours to fix</span>' : ''}</h4>
 ${bi(N.friction_narrative.yours_to_fix, pick('friction_narrative.yours_to_fix'))}</div>
-<div class="blk mdl"><h4>助手能力所限 ${BI ? '<span class="en-inline en">/ Model limits</span>' : ''}</h4>
+<div class="blk mdl"><h4><span class="zh">助手能力所限</span> ${BI ? '<span class="en-inline en">/ Model limits</span>' : ''}</h4>
 ${bi(N.friction_narrative.model_limits, pick('friction_narrative.model_limits'))}</div>
-<div class="blk env"><h4>环境或工具问题 ${BI ? '<span class="en-inline en">/ Environment</span>' : ''}</h4>
+<div class="blk env"><h4><span class="zh">环境或工具问题</span> ${BI ? '<span class="en-inline en">/ Environment</span>' : ''}</h4>
 ${bi(N.friction_narrative.environment, pick('friction_narrative.environment'))}</div>` : ''}
 
-<h3 class="sub-h">重复出现的摩擦</h3>
+<h3 class="sub-h zh">重复出现的摩擦</h3>${BI ? '<h3 class="sub-h en">Recurring friction</h3>' : ''}
 ${facetAgg.friction.length ? bar(facetAgg.friction, fmax)
   : '<div class="note">没有任何摩擦重复出现 2 次以上。样本可能偏少。</div>'}
 
@@ -228,52 +229,52 @@ ${biH('可以直接粘进 AGENTS.md 的规则', 'Suggested AGENTS.md Additions')
 ${N && N.rules && N.rules.length ? `
 <div class="note zh">勾选你要的，点「复制勾选项」，直接粘进项目根目录的 <code>AGENTS.md</code>。</div>
 ${BI ? '<div class="note en">Check the ones you want, hit "复制勾选项", and paste them straight into <code>AGENTS.md</code> at your project root.</div>' : ''}
-<div class="rulebar"><button class="copyall" onclick="copyChecked()">复制勾选项</button>
+<div class="rulebar"><button class="copyall" onclick="copyChecked()"><span class="zh">复制勾选项</span>${BI ? '<span class="en">Copy checked</span>' : ''}</button>
 <span id="copystat"></span></div>
 ${N.rules.map((r, i) => { const e = (pick('rules') || [])[i]; return `
-<div class="rule"><span class="n"><span class="zh">${r.evidence_count} 个会话</span>${BI ? `<span class="en">${r.evidence_count} sessions</span>` : ''}</span>
+<div class="rule">${(() => { const c = (facetAgg.ruleCandidates || []).find((x) => x.key === r.friction_key); return c ? `<span class="n"><span class="zh">${c.sessions} 个会话 · ${c.count} 次</span>${BI ? `<span class="en">${c.sessions} sessions · ${c.count}×</span>` : ''}</span>` : ''; })()}
 <label class="rh"><input type="checkbox" class="rk" checked data-rule="${esc('## ' + r.heading + '\n- ' + r.rule)}">
-<b>${esc(r.heading)}</b>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.heading)}</span>' : ''}` : ''}</label>
+<b><span class="zh">${esc(r.heading)}</span></b>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.heading)}</span>' : ''}` : ''}</label>
 <code class="zh">${esc(r.rule)}</code>${e && BI ? `<code class="en">${esc(e.rule)}</code>` : ''}
 ${bi(r.why, e && e.why, 'div', 'why')}
 ${r.evidence_quote ? `<div class="quote">证据：${esc(r.evidence_quote)}</div>` : ''}
-<button class="copy1" onclick="copyOne(this)">复制这条</button></div>`; }).join('')}`
+<button class="copy1" onclick="copyOne(this)"><span class="zh">复制这条</span>${BI ? '<span class="en">Copy</span>' : ''}</button></div>`; }).join('')}`
   : (facetAgg.ruleCandidates.length ? `<ul>${facetAgg.ruleCandidates.map((f) =>
       `<li><b>${esc(L(f.key))}</b> — 在 ${f.sessions} 个会话里出现，共 ${f.count} 次</li>`).join('')}</ul>`
     : '<div class="note">还没有摩擦重复到 3 个会话以上。门槛设在 3，是为了避免把偶发问题写成规则。</div>')}
 ${facetAgg.repeatedInstructions.length ? `
-<h3 class="sub-h">你反复说过的话</h3>
+<h3 class="sub-h zh">你反复说过的话</h3>${BI ? '<h3 class="sub-h en">What you keep repeating</h3>' : ''}
 <div class="note zh">说过两次以上的指令，本身就是最好的规则候选——写进配置文件就不用再说第三次。</div>
 ${BI ? '<div class="note en">An instruction you have given more than twice is already the best rule candidate — put it in the config file and you never have to say it a third time.</div>' : ''}
 <ul>${facetAgg.repeatedInstructions.slice(0, 8).map((i) =>
-  `<li>${esc(i.text)} <small>（${i.n} 次）</small></li>`).join('')}</ul>` : ''}
+  `<li class="quote">${esc(i.text)} <small>×${i.n}</small></li>`).join('')}</ul>` : ''}
 
 ${N && N.next_steps && N.next_steps.length ? `
 ${biH('下一步可以试试', 'New Ways to Use Codex')}
 <div class="note zh">每条下面的提示词可以直接整段粘进 Codex。</div>
 ${BI ? '<div class="note en">Each prompt below can be pasted into Codex as-is.</div>' : ''}
 ${N.next_steps.map((s2, i) => { const e = (pick('next_steps') || [])[i]; return `
-<div class="step"><h4>${esc(s2.title)}${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.title)}</span>' : ''}` : ''}</h4>
+<div class="step"><h4><span class="zh">${esc(s2.title)}</span>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.title)}</span>' : ''}` : ''}</h4>
 ${bi(s2.why_for_you, e && e.why_for_you)}
 <pre>${esc(s2.copyable_prompt)}</pre>
-<button class="copy1" onclick="copyPre(this)">复制提示词</button></div>`; }).join('')}` : ''}
+<button class="copy1" onclick="copyPre(this)"><span class="zh">复制提示词</span>${BI ? '<span class="en">Copy prompt</span>' : ''}</button></div>`; }).join('')}` : ''}
 
 ${N && N.horizon ? `
 ${biH('再往前一步', 'On the Horizon')}
 ${bi(N.horizon.summary, pick('horizon.summary'), 'div', 'lead')}
 ${(N.horizon.items || []).map((i, ix) => { const e = (pick('horizon.items') || [])[ix]; return `
-<div class="blk far"><h4>${esc(i.title)}${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.title)}</span>' : ''}` : ''}</h4>
+<div class="blk far"><h4><span class="zh">${esc(i.title)}</span>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.title)}</span>' : ''}` : ''}</h4>
 ${bi(i.vision, e && e.vision)}</div>`; }).join('')}` : ''}
 
-<details><summary>展开：支撑这些结论的原始统计</summary>
-<h3 style="font-size:17px;margin:18px 0 10px">你主要在做什么</h3>
+<details><summary><span class="zh">展开：支撑这些结论的原始统计</span>${BI ? '<span class="en">Expand: the raw statistics behind these conclusions</span>' : ''}</summary>
+<h3 class="zh" style="font-size:17px;margin:18px 0 10px">你主要在做什么</h3>${BI ? '<h3 class="en" style="font-size:17px;margin:18px 0 10px">What you work on</h3>' : ''}
 ${facetAgg.goals.length ? bar(facetAgg.goals, gmax) : '<div class="note">样本不足。</div>'}
-<h3 style="font-size:17px;margin:22px 0 10px">会话结果分布</h3>
+<h3 class="zh" style="font-size:17px;margin:22px 0 10px">会话结果分布</h3>${BI ? '<h3 class="en" style="font-size:17px;margin:22px 0 10px">Outcome distribution</h3>' : ''}
 <div class="note">${Object.entries(facetAgg.outcomes).map(([k, v]) => `${esc(k)}: ${v}`).join(' · ') || '无'}</div>
 </details>
 
-<div class="note warn"><b>关于这些数字的可信度</b><br>
-顶部四个数字取自全部会话；摩擦与归因取自深度分析的那部分样本，两者范围不同。
+<div class="note warn"><b><span class="zh">关于这些数字的可信度</span>${BI ? '<span class="en">How much to trust these numbers</span>' : ''}</b><br>
+<span class="zh">顶部四个数字取自全部会话；摩擦与归因取自深度分析的那部分样本，两者范围不同。
 每个会话的摩擦次数与归因<b>由模型判定</b>；跨会话的汇总、排序、门槛判定由确定性代码完成，
 代码不对模型的判断做二次修改。所以「次数」是模型输出的加总，不是独立测量值。
 原因未确定的摩擦单独计入「原因未确定」，不并入环境类。
@@ -281,12 +282,29 @@ ${facetAgg.goals.length ? bar(facetAgg.goals, gmax) : '<div class="note">样本�
 报告只记录可观察到的用户反应（纠正、改向、明确认可等），<b>不推断满意度</b>：
 纠正是正常的迭代协作，不等于不满；沉默可能是认可，也可能是放弃。
 一次外层工具调用不等于一次实际操作（一个逻辑动作可能拆成多次调用）。
-超长会话在送入模型前会保留首尾、省略中段，因此极长会话的中间过程可能未被覆盖。
-实测单会话打标存在 ±1 的边界判断噪声，
-因此<b>单条数字不必细究，趋势和排序才是可用的</b>。分类判断（结果、会话类型）在实测中稳定复现。
-${meta.repairsCount ? `<br>本次归一化修复了 ${meta.repairsCount} 处模型输出偏差。` : ''}</div>
+超长会话在送入模型前每条消息保留首尾、省略中段，因此极长消息的中间内容可能未被覆盖。
+实测单会话打标存在 ±1 的边界判断噪声，因此<b>单条数字不必细究，趋势和排序才是可用的</b>。
+${meta.repairsCount ? `本次归一化修复了 ${meta.repairsCount} 处模型输出偏差。` : ''}</span>
+${BI ? `<span class="en">The four numbers at the top cover all sessions; friction and attribution come only
+from the deeply analyzed subset — different scopes. Per-session friction counts and attribution are
+<b>judged by the model</b>; the cross-session aggregation, ranking and thresholds are computed by
+deterministic code that never revises the model's judgement. So a "count" is a sum of model outputs,
+not an independent measurement.
+Friction with no stated cause is listed separately as "cause undetermined" and is never folded into
+the environment bucket.
+Tool failures are determined by shell exit code, not by whether the word "error" appears in the output —
+the latter counts source code found by a search as a failure.
+The report records only observable user actions (corrections, redirections, explicit approval);
+it does <b>not infer satisfaction</b>: a correction is normal iterative collaboration, not displeasure,
+and silence may mean approval or may mean giving up.
+One outer tool call is not one real operation — a single logical action may be split across several calls.
+In long sessions each message keeps its head and tail with the middle elided, so the middle of very long
+messages may not be covered.
+Measured labelling noise is about ±1 per session, so <b>individual numbers are not worth scrutinising;
+the trend and the ranking are</b>.
+${meta.repairsCount ? `Normalisation repaired ${meta.repairsCount} model output deviations in this run.` : ''}</span>` : ''}</div>
 
-<footer>agents-deep-insights v${esc(meta.version)} · 本地生成 ·
+<footer>agents-deep-insights v${esc(meta.version)} · <span class="zh">本地生成</span>${BI ? '<span class="en">generated locally</span>' : ''} ·
 <a href="https://github.com/gmggyyds/agents-deep-insights">github.com/gmggyyds/agents-deep-insights</a></footer>
 </div>
 <script>
