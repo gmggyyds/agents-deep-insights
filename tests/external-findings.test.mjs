@@ -519,3 +519,34 @@ test('双语对照下行内元素必须分行，不能首尾相连', () => {
     assert.ok(rule[0].includes(sel), `${sel} 未包含在分行规则里`);
   }
 });
+
+/**
+ * doctor 的自检面必须覆盖「有元数据但拿不到正文」。
+ * 2026-09-10：正文数据源接进来了，doctor 却没跟着扩自检 —— 正文目录被清理时
+ * doctor 仍报「未发现问题」，而 run 实际上跑不了。发现器不报缺口就等于没有。
+ */
+test('doctor：有 session-meta 但没有对话正文时必须报 E_NO_TRANSCRIPT', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'adi-doctor-'));
+  const metaDir = join(home, 'usage-data', 'session-meta');
+  mkdirSync(metaDir, { recursive: true });
+  // 一个正常的 session-meta，但 ~/.claude/projects 整个不存在 → 找不到任何正文
+  writeFileSync(join(metaDir, 's1.json'), JSON.stringify({
+    session_id: 'no-such-transcript', start_time: new Date().toISOString(),
+    duration_minutes: 5, user_message_count: 3, assistant_message_count: 3,
+    tool_counts: {}, tool_errors: 0,
+  }));
+
+  const prev = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = home;
+  try {
+    const { collect } = await import('../src/doctor.mjs');
+    const d = collect();
+    assert.equal(d.counts.claudeMeta30d, 1, '应当发现 1 个 session-meta');
+    assert.equal(d.counts.claudeMetaWithTranscript, 0, '不应找到任何正文');
+    assert.ok(d.problems.some((p) => p.code === 'E_NO_TRANSCRIPT'),
+      `有 meta 无正文时必须报 E_NO_TRANSCRIPT，实际 problems=${JSON.stringify(d.problems.map((p) => p.code))}`);
+  } finally {
+    if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prev;
+    rmSync(home, { recursive: true, force: true });
+  }
+});

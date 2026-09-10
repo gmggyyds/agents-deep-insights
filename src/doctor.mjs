@@ -8,11 +8,12 @@
  */
 import { version } from './version.mjs';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { platform, release, homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as codex from './providers/codex.mjs';
 import * as cc from './providers/claude-code.mjs';
+import { transcriptIndex } from './providers/cc-transcript.mjs';
 
 export const ERRORS = {
   E_NO_SESSIONS: '未找到任何会话记录',
@@ -42,12 +43,20 @@ export function collect() {
   d.sources = {
     codexHome: { path: tilde(codex.codexHome()), exists: existsSync(codex.codexHome()) },
     claudeMeta: { path: tilde(cc.metaDir()), exists: existsSync(cc.metaDir()) },
+    // 深度分析要的对话正文在这里；只报路径与计数，绝不读内容
+    claudeTranscripts: { path: tilde(join(cc.claudeHome(), 'projects')), exists: existsSync(join(cc.claudeHome(), 'projects')) },
   };
+  const ccIndex = transcriptIndex();
   d.counts = {
     codexSessions30d: codex.discover({ days: 30 }).length,
     codexSessionsAll: codex.discover({ days: 0 }).length,
     claudeMeta30d: cc.discover({ days: 30 }).length,
     claudeMetaAll: cc.discover({ days: 0 }).length,
+    claudeTranscriptFiles: ccIndex.size,
+    // 有元数据、也确实找得到正文的会话数 —— 深度分析真正能用的就是这些
+    claudeMetaWithTranscript: cc.discover({ days: 30 }).filter((m) => {
+      try { return ccIndex.has(JSON.parse(readFileSync(m.path, 'utf8')).session_id); } catch { return false; }
+    }).length,
   };
 
   d.problems = [];
@@ -57,6 +66,14 @@ export function collect() {
   }
   if (d.counts.claudeMetaAll === 0 && d.claudeCode.installed) {
     d.problems.push({ code: 'E_NO_SESSIONS', scope: 'claude-code', hint: '在 Claude Code 里先跑一次 /insights 生成 session-meta' });
+  }
+  // 加了新数据源就得跟着扩自检面，否则「正文目录被清理」这种真故障会在一片绿灯里查不出来
+  if (d.counts.claudeMeta30d > 0 && d.counts.claudeMetaWithTranscript === 0) {
+    d.problems.push({
+      code: 'E_NO_TRANSCRIPT', scope: 'claude-code',
+      hint: `近 30 天有 ${d.counts.claudeMeta30d} 个 session-meta，但一个都找不到对应的对话正文；`
+        + `检查 ${tilde(join(cc.claudeHome(), 'projects'))} 是否被清理过。没有正文只能跑 stats，跑不了 run`,
+    });
   }
   if (!d.sqlite3) d.problems.push({ code: 'W_NO_SQLITE', hint: 'sqlite3 缺失，Codex 索引降级为直接扫目录（功能不减）' });
   return d;
