@@ -21,7 +21,7 @@ const CACHE = join(process.env.ADI_CACHE || join(homedir(), '.agents-deep-insigh
 // 指纹必须包含转录内容本身。此前只用长度，内容变了但长度不变会命中旧缓存、
 // 复用过时结果（外部测试发现："Need AAA" -> "Need BBB" 指纹不变）。
 const fingerprint = (m) => createHash('sha256')
-  .update(`v4|${m.provider}|${m.id}|${m.userMessages}|${m.toolCalls}|`)   // v4: facet 加 underlying_goal/primary_success/helpfulness/satisfaction
+  .update(`v5|${m.provider}|${m.id}|${m.userMessages}|${m.toolCalls}|`)   // v5: 失败判定改退出码·子代理分离·满意度改可观察反应
   .update(compactTranscript(m.transcript || []))
   .digest('hex').slice(0, 16);
 
@@ -197,7 +197,7 @@ async function main() {
     const spanDays = days_.length ? Math.round((Math.max(...days_) - Math.min(...days_)) / 864e5) : 0;
     const html = renderHtml({ metaAgg, facetAgg, narrative, narrativeEn, meta: {
       generatedAt: new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',  // 标时区，否则本地时间会被误读
-      providers: used, windowDays: days, spanDays, version: '0.4.0', repairsCount } });
+      providers: used, windowDays: days, spanDays, version: '0.5.0', repairsCount } });
     const out = String(flag('out', join(process.cwd(), 'adi-report.html')));
     fs.writeFileSync(out, html);
     console.log(`  报告已生成: ${out}`);

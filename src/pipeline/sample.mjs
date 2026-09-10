@@ -7,8 +7,24 @@
  */
 
 /** substantive 门槛：滤掉单轮噪声会话。实测 394 个里 334 个是 umsg=1 的噪声。 */
-export function isSubstantive(m) {
-  return m && m.userMessages >= 2 && (m.durationMinutes ?? 0) >= 1;
+/**
+ * 子代理派生的会话：控制器把任务书发给它，人全程没参与。
+ *
+ * 实测本机 34 条里 17 条（50%）是这种，它们贡献了 42% 的工具调用，
+ * 而它们的「用户消息」其实是控制器写的任务书（"你是 Amazon 政策研究 agent。任务：…"）。
+ * 全部混进「你与 agent 的协作」统计，会把总会话数、用户消息数、工具调用数一起抬高。
+ *
+ * 外部使用者跑 v0.4.0 时被迫自己做输入过滤（「不含自动唤醒和系统注入」），
+ * 就是因为这一层没做。默认排除，但**单列报出**——静默丢弃比混进去更糟。
+ */
+export function isSubagent(m) {
+  return !!m && m.source === 'subagent';
+}
+
+export function isSubstantive(m, { includeSubagents = false } = {}) {
+  if (!m) return false;
+  if (!includeSubagents && isSubagent(m)) return false;
+  return m.userMessages >= 2 && (m.durationMinutes ?? 0) >= 1;
 }
 
 function isoWeek(ts) {

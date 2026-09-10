@@ -126,7 +126,10 @@ Attribution of frictions: yours-to-fix ${agg.attribution.user_actionable}, model
 Outcomes: ${JSON.stringify(agg.outcomes)}
 Session types: ${JSON.stringify(agg.sessionTypes)}
 Helpfulness: ${JSON.stringify(agg.helpfulness || {})}
-Satisfaction reactions: ${JSON.stringify(agg.satisfaction || {})}
+Observable user reactions: ${JSON.stringify(agg.reactions || {})}
+NOTE: these are observed ACTIONS, not satisfaction. A correction is normal iterative
+collaboration; do not report it as the user being unhappy. Never state or imply a
+satisfaction rate — the data does not support one.
 Primary successes: ${JSON.stringify(agg.successes || {})}
 
 ## How this developer actually drives the agent (for the "how_you_work" section)

@@ -1,4 +1,8 @@
-/** L5 报告：模板化生成。数字全部来自 L4 的确定性聚合，LLM 不参与计数。 */
+/**
+ * L5 报告：模板化生成。
+ * 跨会话的汇总、排序与门槛判定由确定性代码完成；单会话的次数与归因是模型判定的。
+ * （早期注释写「LLM 不参与计数」，不准确——外部复测指出后已改。）
+ */
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const LABEL = {
   misunderstood_request: '误解了你的要求', wrong_approach: '方向走错', buggy_code: '给出的代码有 bug',
@@ -132,7 +136,7 @@ ${facetAgg.n} sessions deeply analyzed (spanning ${esc(meta.spanDays)} days) · 
 only redacted session excerpts are sent to the model you configured yourself</p>` : ''}
 
 <div class="cards">
-${[[metaAgg.sessions, '总会话', 'Sessions'],
+${[[metaAgg.sessions, '你参与的会话', 'Your sessions'],
    [facetAgg.n, '深度分析', 'Deeply analyzed'],
    [`${(metaAgg.failureRate * 100).toFixed(1)}%`, '工具失败率', 'Tool failure rate'],
    [metaAgg.gitCommits, '提交次数', 'Commits']].map(([v, zh, en]) =>
@@ -140,6 +144,18 @@ ${[[metaAgg.sessions, '总会话', 'Sessions'],
 </div>
 
 ${N ? bi(N.headline, E && E.headline, 'div', 'lead') : ''}
+${(metaAgg.subagentSessions || metaAgg.failureRateCoverage < 0.95) ? `
+<div class="note posture"><b>口径说明</b><br>
+<span class="zh">${metaAgg.subagentSessions ? `另有 ${metaAgg.subagentSessions} 个会话由子代理派生（人未参与），
+它们的 ${metaAgg.subagentToolCalls} 次工具调用与 ${metaAgg.subagentUserMessages} 条任务书<b>未计入</b>上面的数字。` : ''}
+${metaAgg.failureRateCoverage < 0.95 ? `工具失败率的分母只用能拿到退出码的调用，
+覆盖 ${Math.round(metaAgg.failureRateCoverage * 100)}% 的调用；其余拿不到结果，未计入分母也未算作成功。` : ''}</span>
+${BI ? `<span class="en">${metaAgg.subagentSessions ? `A further ${metaAgg.subagentSessions} sessions were spawned by
+sub-agents with no human in the loop; their ${metaAgg.subagentToolCalls} tool calls and
+${metaAgg.subagentUserMessages} task briefs are <b>excluded</b> from the numbers above.` : ''}
+${metaAgg.failureRateCoverage < 0.95 ? `The tool failure rate counts only calls that reported an exit code,
+covering ${Math.round(metaAgg.failureRateCoverage * 100)}% of calls; the rest are neither counted as failures nor as successes.` : ''}</span>` : ''}</div>` : ''}
+
 
 ${N && N.themes && N.themes.length ? `
 ${biH('你主要在做什么', 'What You Work On')}
@@ -244,9 +260,13 @@ ${facetAgg.goals.length ? bar(facetAgg.goals, gmax) : '<div class="note">样本�
 
 <div class="note warn"><b>关于这些数字的可信度</b><br>
 顶部四个数字取自全部会话；摩擦与归因取自深度分析的那部分样本，两者范围不同。
-每个会话的摩擦次数与归因**由模型判定**；跨会话的汇总、排序、门槛判定由确定性代码完成，
+每个会话的摩擦次数与归因<b>由模型判定</b>；跨会话的汇总、排序、门槛判定由确定性代码完成，
 代码不对模型的判断做二次修改。所以「次数」是模型输出的加总，不是独立测量值。
 原因未确定的摩擦单独计入「原因未确定」，不并入环境类。
+工具失败按 shell 退出码判定，不按输出里是否出现 error 字样——后者会把搜索命中的源代码算成失败。
+报告只记录可观察到的用户反应（纠正、改向、明确认可等），<b>不推断满意度</b>：
+纠正是正常的迭代协作，不等于不满；沉默可能是认可，也可能是放弃。
+一次外层工具调用不等于一次实际操作（一个逻辑动作可能拆成多次调用）。
 超长会话在送入模型前会保留首尾、省略中段，因此极长会话的中间过程可能未被覆盖。
 实测单会话打标存在 ±1 的边界判断噪声，
 因此<b>单条数字不必细究，趋势和排序才是可用的</b>。分类判断（结果、会话类型）在实测中稳定复现。

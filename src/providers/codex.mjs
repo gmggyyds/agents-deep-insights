@@ -59,6 +59,42 @@ function clipMessage(t, max = 1200) {
   return `${t.slice(0, head)} …[略${t.length - max}字]… ${t.slice(-tail)}`;
 }
 
+
+/**
+ * 工具执行结果判定。
+ *
+ * 旧实现是 `/"exit_code"\s*:\s*[1-9]|command failed|error:/i`，两处都错：
+ *   1. `"exit_code": N` 这种写法在 Codex 的数据里**一次都不存在**——真实格式是
+ *      `Process exited with code N`。退出码检测从上线起就没生效过。
+ *   2. 于是它退化成一个纯 `error:` 文本计数器：`grep` 打印出一行含 "error:" 的**源代码**
+ *      （`return { ok: false, error: "..." }`、`except OSError:`）就被记成一次工具失败。
+ *
+ * 实测本机 34 条会话：旧口径报 32 次失败、100% 来自文本匹配、零个来自退出码；
+ * 而按退出码统计的真实失败是 125 次（15.2%）。同时高估又低估。
+ *
+ * 外部测试者（用 v0.4.0 跑自己的会话）据此指出「大量由日志文本匹配得到的工具失败…
+ * 可能重叠，不能当成独立事故」——判断成立。
+ *
+ * 现在只认权威信号；拿不到退出码的一律计入 unknown，不猜。
+ * **判不出来 ≠ 成功**，也 ≠ 失败。
+ */
+export function classifyOutcome(o, meta) {
+  const m = /Process exited with code (\d+)/.exec(o);
+  if (m) {
+    if (Number(m[1]) !== 0) meta.toolFailures++;
+    meta.toolOutcomesKnown++;
+    return;
+  }
+  // 后台/长跑进程尚未退出，此刻既不算成功也不算失败
+  if (/Process running with session/.test(o)) { meta.toolStillRunning++; return; }
+  // 非 shell 工具没有退出码，只能靠结构化错误标记；范围收窄到工具自己的报错框架，
+  // 不再匹配任何一行含 error: 的正文
+  if (/^\s*(\{)?\s*"?error"?\s*:/i.test(o) || /\btool call (error|failed)\b/i.test(o)) {
+    meta.toolFailures++; meta.toolOutcomesKnown++; return;
+  }
+  meta.toolOutcomeUnknown++;
+}
+
 const LOW_SIGNAL = /^(<turn_aborted>|<environment_context>|<codex_internal_context|# AGENTS\.md|<permissions instructions>|<user_instructions>)/;
 
 /** L1：纯代码提取 session-meta。零 LLM。 */
@@ -70,6 +106,7 @@ export function parse(file) {
     startedAt: null, endedAt: null, forkedFrom: null,
     userMessages: 0, assistantMessages: 0, toolCalls: 0,
     toolCounts: {}, toolFailures: 0, userInterruptions: 0,
+    toolOutcomesKnown: 0, toolStillRunning: 0, toolOutcomeUnknown: 0,
     gitCommits: 0, gitPushes: 0, responseGaps: [],
     originator: null, source: null, cliVersion: null,
     modelCounts: {}, approvalPolicies: {}, sandboxPolicies: {}, reasoningEfforts: {},
@@ -143,7 +180,7 @@ export function parse(file) {
       meta.transcript.push(`[tool] ${n}`);
     } else if (pl.type === 'function_call_output' || pl.type === 'custom_tool_call_output') {
       const o = typeof pl.output === 'string' ? pl.output : JSON.stringify(pl.output || '');
-      if (/"exit_code"\s*:\s*[1-9]|command failed|error:/i.test(o)) meta.toolFailures++;
+      classifyOutcome(o, meta);
     }
   }
   meta.id ||= file.split('/').pop().replace(/^rollout-|\.jsonl$/g, '');

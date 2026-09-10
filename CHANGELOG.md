@@ -13,6 +13,70 @@
 - 跨工具同尺对比（同一类摩擦在 Codex 与 Claude Code 上是否都排前列）
 - 周度清单出口：未完成 / 半成品 / 已出 bug / 可合并
 
+## [0.5.0] - 2026-09-10
+
+一位外部使用者用 v0.4.0 跑了自己 30 天的 Codex 记录，在交付报告里对工具本身提了三条批评。
+逐条到代码里核过，**三条全部成立**，其中第一条比他说的还严重。
+
+### 修复：工具失败判定完全是错的
+
+旧实现 `/"exit_code"\s*:\s*[1-9]|command failed|error:/i` 有两处硬伤：
+
+1. `"exit_code": N` 这种写法在 Codex 数据里**一次都不存在**——真实格式是
+   `Process exited with code N`。**退出码检测从上线起就没生效过。**
+2. 于是它退化成一个纯 `error:` 文本计数器：`grep` 打印出一行含 `error:` 的**源代码**
+   （`return { ok: false, error: "..." }`、`except OSError:`）就被记成一次工具失败。
+
+本机 34 条会话实测：
+
+| | 旧口径 | 真实（按退出码） |
+|---|---|---|
+| 失败次数 | 32（100% 来自文本匹配，0 来自退出码） | **125** |
+| 失败率 | 2.6% | **15.2%** |
+
+**同时高估又低估**：把搜索命中的源代码算成失败，又漏掉了 125 次真失败。
+这也是外部报告里「203 个原因不明的计数」的根源——模型被告知发生了工具失败，
+但 transcript 里找不到原因（因为那些是误报），只能答 `unknown`。
+
+现在只认 `Process exited with code N`；后台仍在运行的单列；拿不到退出码的计入
+unknown，既不算失败也不算成功。失败率的分母改为**可判定集**，并在报告里标注口径覆盖率
+（本机 67%）。按总调用算会低估三分之一（10.4% vs 15.5%）。
+
+### 修复：子代理派生的会话混进了「你与 agent 的协作」统计
+
+实测本机 34 条里 **17 条（50%）是子代理派生**，人全程没参与。它们贡献了 42% 的工具调用，
+而它们的「用户消息」其实是控制器写给子代理的任务书
+（`你是 Amazon 政策研究 agent。任务：…`）。
+
+外部使用者被迫自己做输入过滤（「不含自动唤醒和系统注入」），就是因为这一层没做。
+现在默认排除，但**单列报出**——静默丢弃比混进去更糟。
+
+### 变更（破坏性）：不再输出「满意度」
+
+v0.4.0 的打标 prompt 规定「纠正=不满意，沉默继续=可能满意」。外部使用者明确拒绝采用
+这个口径，理由成立：**纠正是正常的迭代协作，不等于不满；沉默可能是认可，也可能是放弃**。
+那是把一个有争议的解释烤进度量，再把结果当计数呈现。
+
+`user_satisfaction_counts` → `user_reaction_counts`，取值改为**可观察的动作**
+（explicit_approval / correction / redirection / repeat_request / continue_silently）。
+合成层明令不得给出或暗示满意率。
+
+另按其反馈补上口径说明：一次外层工具调用不等于一次实际操作。
+
+facet 指纹 v4 → v5，旧缓存自动失效。
+
+### 测试
+
+41 → 49。新增：grep 到的源代码不得算失败、认退出码不认从不存在的写法、判不出来要计入
+unknown、子代理不并入协作统计、失败率分母只用可判定集、不得再用满意度口径、
+HTML 里不得出现字面 `**`。每条都验证过能对旧实现变红。
+
+**过程中自己踩的两个坑**：
+- 只修了 Codex provider，claude-code provider 仍在加分子不加分母，端到端直接报出
+  **163% 的失败率**。「修复必须同步全部路径」这条又中一次。
+- 为它写的守卫测试**第一版是空的**——直接构造 meta 对象、没走 provider 的 `parse()`，
+  把修复撤掉照样绿。改成真调 `parse()` 后才抓得到。
+
 ## [0.4.0] - 2026-09-10
 
 用户对照官方 Claude Code `/insights` 报告后指出「差距特别大，内容少了很多」。
@@ -257,7 +321,8 @@ v0.3.0 修第一层（单条消息 400→1200）时，**给第二层制造了回
 - 仅在 macOS + codex-cli 0.131.0 + gpt-5.5 上实测。
 - codex-cli 0.131.0 无法使用账号默认模型（需 `--model gpt-5.5` 或升级 Codex）。
 
-[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.2.1...v0.3.0

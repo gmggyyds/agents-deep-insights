@@ -49,6 +49,10 @@ export function parse(file) {
     toolCalls: Object.values(d.tool_counts || {}).reduce((a, b) => a + b, 0),
     toolCounts: d.tool_counts || {},
     toolFailures: d.tool_errors || 0,
+    // 官方 session-meta 的 tool_errors 是对**全部**调用算的，所以可判定集就是全部调用。
+    // 不补这一行，失败率的分子有、分母没有 —— 实测直接报出 163% 这种数。
+    toolOutcomesKnown: Object.values(d.tool_counts || {}).reduce((a, b) => a + b, 0),
+    toolStillRunning: 0, toolOutcomeUnknown: 0,
     userInterruptions: d.user_interruptions || 0,
     gitCommits: d.git_commits || 0,
     gitPushes: d.git_pushes || 0,

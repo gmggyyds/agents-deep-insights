@@ -1,27 +1,41 @@
 /** L4 聚合。纯代码，零 LLM —— 所有计数/排序/门槛判定都在这里，不交给模型。 */
 import { FRICTION, GOAL_CATEGORIES, ATTRIBUTION } from '../schema/facet.mjs';
-import { isSubstantive } from './sample.mjs';
+import { isSubstantive, isSubagent } from './sample.mjs';
 
 export function aggregateMetas(metas) {
   const a = {
-    sessions: metas.length, substantive: 0, userMessages: 0, assistantMessages: 0, toolCalls: 0,
+    sessions: 0,   // 真人参与的会话数，循环里累加；子代理不计
+    allSessions: metas.length, substantive: 0, userMessages: 0, assistantMessages: 0, toolCalls: 0,
     toolFailures: 0, interruptions: 0, gitCommits: 0, gitPushes: 0,
+    toolOutcomesKnown: 0, toolStillRunning: 0, toolOutcomeUnknown: 0,
     totalMinutes: 0, toolCounts: {}, projects: {}, hours: Array(24).fill(0),
     gaps: [], days: new Set(), durations: [],
+    subagentSessions: 0, subagentToolCalls: 0, subagentUserMessages: 0,
     // 姿态分布（Codex 独有，官方 /insights 无等价信号）：
     // 用户显式给出的授权与沙箱策略，是「你把它当自主执行器还是结对编程」最硬的证据。
     approvalPolicies: {}, sandboxPolicies: {}, originators: {}, sources: {}, models: {},
     planSessions: 0,
   };
   for (const m of metas) {
+    // 子代理会话单独记账，不并入「你和 agent 的协作」口径
+    if (isSubagent(m)) {
+      a.subagentSessions++;
+      a.subagentToolCalls += m.toolCalls || 0;
+      a.subagentUserMessages += m.userMessages || 0;
+      continue;
+    }
     a.userMessages += m.userMessages || 0;
     a.assistantMessages += m.assistantMessages || 0;
     a.toolCalls += m.toolCalls || 0;
     a.toolFailures += m.toolFailures || 0;
+    a.toolOutcomesKnown += m.toolOutcomesKnown || 0;
+    a.toolStillRunning += m.toolStillRunning || 0;
+    a.toolOutcomeUnknown += m.toolOutcomeUnknown || 0;
     a.interruptions += m.userInterruptions || 0;
     a.gitCommits += m.gitCommits || 0;
     a.gitPushes += m.gitPushes || 0;
     a.totalMinutes += m.durationMinutes || 0;
+    a.sessions++;
     if (isSubstantive(m) && m.durationMinutes > 0) a.durations.push(m.durationMinutes);
     if (isSubstantive(m)) a.substantive++;
     for (const [k, v] of Object.entries(m.toolCounts || {})) a.toolCounts[k] = (a.toolCounts[k] || 0) + v;
@@ -43,7 +57,11 @@ export function aggregateMetas(metas) {
   delete a.durations;
   a.gaps.sort((x, y) => x - y);
   a.medianGap = a.gaps.length ? a.gaps[Math.floor(a.gaps.length / 2)] : null;
-  a.failureRate = a.toolCalls ? a.toolFailures / a.toolCalls : 0;
+  // 分母只用「能判定结果的调用」。把判不出来的混进分母等于系统性稀释失败率——
+  // 本机实测 1,224 次调用里有 280 次拿不到退出码、119 次仍在运行，
+  // 按总调用算失败率会低估三分之一。
+  a.failureRate = a.toolOutcomesKnown ? a.toolFailures / a.toolOutcomesKnown : 0;
+  a.failureRateCoverage = a.toolCalls ? a.toolOutcomesKnown / a.toolCalls : 0;
   return a;
 }
 
@@ -127,8 +145,8 @@ export function aggregateFacets(facets, { noiseFloor = NOISE_FLOOR, metas = null
     attribution,
     outcomes: counts('outcome'), sessionTypes: counts('session_type'),
     helpfulness: counts('claude_helpfulness'), successes: counts('primary_success'),
-    satisfaction: facets.reduce((acc, f) => {
-      for (const [k, v] of Object.entries(f?.user_satisfaction_counts || {})) {
+    reactions: facets.reduce((acc, f) => {
+      for (const [k, v] of Object.entries(f?.user_reaction_counts || {})) {
         if (typeof v === 'number' && v > 0) acc[k] = (acc[k] || 0) + v;
       }
       return acc;

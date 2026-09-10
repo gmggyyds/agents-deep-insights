@@ -58,8 +58,23 @@ export const PRIMARY_SUCCESS = [
 /** 助手这次到底有多大用。官方实测取值：essential / very_helpful / moderately_helpful / unhelpful。 */
 export const HELPFULNESS = ['essential', 'very_helpful', 'moderately_helpful', 'slightly_helpful', 'unhelpful'];
 
-/** 用户满意度。官方是开放词表（漂出过 happy / neutral），这里闭合以保证可比。 */
-export const SATISFACTION = ['satisfied', 'likely_satisfied', 'neutral', 'dissatisfied'];
+/**
+ * 用户**可观察的反应**，不是满意度。
+ *
+ * v0.4.0 曾用 satisfied / likely_satisfied / dissatisfied，并在 prompt 里规定
+ * 「纠正=不满意，沉默继续=可能满意」。外部使用者跑完直接拒绝采用这个口径，
+ * 理由成立：**纠正是正常的迭代协作，不等于不满；沉默可能是认可，也可能是放弃**。
+ * 那是把一个有争议的解释烤进度量，再把结果当计数呈现。
+ *
+ * 现在只记录能从 transcript 直接看到的动作，情绪留给读报告的人自己判断。
+ */
+export const REACTION = [
+  'explicit_approval',   // 明确说好/对/可以
+  'correction',          // 指出结果不对并给出正确方向
+  'redirection',         // 改变目标或换做法，不含对错判断
+  'repeat_request',      // 同一诉求再说一次（通常意味着上一轮没达成）
+  'continue_silently',   // 不评价，直接进入下一步
+];
 
 export const ATTRIBUTION = ['user_actionable', 'agent_capability', 'environmental', 'unknown'];
 
@@ -127,12 +142,12 @@ export function facetSchema() {
       underlying_goal: { type: 'string' },
       primary_success: { type: 'string', enum: PRIMARY_SUCCESS },
       claude_helpfulness: { type: 'string', enum: HELPFULNESS },
-      user_satisfaction_counts: denseCounts(SATISFACTION),
+      user_reaction_counts: denseCounts(REACTION),
     },
     required: [
       'outcome', 'session_type', 'goal_categories', 'friction_counts',
       'friction_attribution', 'friction_detail', 'user_instructions', 'brief_summary',
-      'underlying_goal', 'primary_success', 'claude_helpfulness', 'user_satisfaction_counts',
+      'underlying_goal', 'primary_success', 'claude_helpfulness', 'user_reaction_counts',
     ],
   };
 }
@@ -147,5 +162,5 @@ export const ENUM_OF = {
 export const COUNT_KEYS_OF = {
   goal_categories: GOAL_CATEGORIES,
   friction_counts: FRICTION,
-  user_satisfaction_counts: SATISFACTION,
+  user_reaction_counts: REACTION,
 };

@@ -10,7 +10,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { facetSchema, OUTCOME, SESSION_TYPE, GOAL_CATEGORIES, FRICTION, ATTRIBUTION,
-         PRIMARY_SUCCESS, HELPFULNESS, SATISFACTION } from '../schema/facet.mjs';
+         PRIMARY_SUCCESS, HELPFULNESS, REACTION } from '../schema/facet.mjs';
 import { parseLoose, normalizeFacet } from '../schema/normalize.mjs';
 import { splitBudget, clipHeadTail } from '../budget.mjs';
 import { redact } from '../redact.mjs';
@@ -38,9 +38,10 @@ Rules:
   This drives the report's theme clustering; a generic sentence makes it useless.
 - primary_success: the single most valuable thing the assistant did well. "none" if nothing stood out.
 - claude_helpfulness: how much the assistant actually moved the work forward.
-- user_satisfaction_counts: count the user's reactions across the session. A correction or
-  a "no, do X instead" is dissatisfied; explicit thanks/approval is satisfied; silent
-  acceptance and moving on is likely_satisfied.
+- user_reaction_counts: count OBSERVABLE user actions only. Do NOT infer emotion.
+  A correction is a correction — it is normal iterative collaboration, NOT evidence of
+  dissatisfaction. Silence is silence — it may mean approval or it may mean the user gave up.
+  Count what the transcript shows; leave the interpretation to the reader.
 - friction_detail: name the SPECIFIC defects, not categories. "introduced a wrong upper
   bound on Net Proceeds and a cross-axis division in the ratio column" is useful;
   "had some bugs" is not. This is the raw material for the report's diagnosis section.`;
@@ -67,12 +68,12 @@ function buildPrompt(transcript, meta, { withEnums }) {
   none | user_actionable | agent_capability | environmental | unknown
 - primary_success: ${PRIMARY_SUCCESS.join(' | ')}
 - claude_helpfulness: ${HELPFULNESS.join(' | ')}
-- user_satisfaction_counts keys: ${SATISFACTION.join(', ')}
+- user_reaction_counts keys: ${REACTION.join(', ')}
 
 Return an object with keys: outcome, session_type, goal_categories, friction_counts,
 friction_attribution, friction_detail (string), user_instructions (array of strings),
 brief_summary (string), underlying_goal (string), primary_success, claude_helpfulness,
-user_satisfaction_counts.
+user_reaction_counts.
 RESPOND WITH ONLY A VALID JSON OBJECT.\n`;
   } else {
     p += '\nReturn the facets as JSON matching the provided output schema.\n';

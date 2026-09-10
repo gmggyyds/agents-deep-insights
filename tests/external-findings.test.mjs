@@ -5,6 +5,14 @@
  */
 import { test } from 'node:test';
 import { compactTranscript } from '../src/pipeline/label.mjs';
+import { readFileSync as _rf, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { parse as parseClaudeCode } from '../src/providers/claude-code.mjs';
+import { classifyOutcome } from '../src/providers/codex.mjs';
+const FACET_SRC = _rf(new URL('../src/schema/facet.mjs', import.meta.url), 'utf8');
+const LABEL_SRC = _rf(new URL('../src/pipeline/label.mjs', import.meta.url), 'utf8');
+const mkMeta = () => ({ toolFailures: 0, toolOutcomesKnown: 0, toolStillRunning: 0, toolOutcomeUnknown: 0 });
 import { renderHtml } from '../src/render/html.mjs';
 import { SYNTHESIS_SCHEMA } from '../src/pipeline/synthesize.mjs';
 import { splitBudget } from '../src/budget.mjs';
@@ -259,4 +267,90 @@ test('合成 schema 七段齐全且每层 required 列全（strict 模式硬要�
     if (o.type === 'array' && o.items) walk(o.items, `${path}[]`);
   };
   walk(SYNTHESIS_SCHEMA, 'root');
+});
+
+/* ── v0.5.0：外部使用者用 v0.4.0 跑自己的会话后提出的三条 ────────────── */
+
+test('工具失败判定：grep 打印出的源代码不得算作失败', () => {
+  // 真实误报形态：搜索命中一行含 error: 的源码
+  const greps = [
+    'Chunk ID: 1a\nWall time: 0.3 seconds\nProcess exited with code 0\n'
+      + 'route.ts:22:    if (!token) return { ok: false, error: "token fetch failed" };',
+    'Process exited with code 0\nexcept OSError:\n    continue',
+  ];
+  for (const out of greps) {
+    const m = mkMeta(); classifyOutcome(out, m);
+    assert.equal(m.toolFailures, 0, `误报为失败: ${out.slice(0, 50)}`);
+  }
+});
+
+test('工具失败判定：认退出码，不认 "exit_code" 那种从不存在的写法', () => {
+  const fail = mkMeta(); classifyOutcome('Process exited with code 1\nsome output', fail);
+  assert.equal(fail.toolFailures, 1, '非零退出码必须算失败');
+  const ok = mkMeta(); classifyOutcome('Process exited with code 0\nfine', ok);
+  assert.equal(ok.toolFailures, 0);
+  // 旧实现找的是 `"exit_code": N`，这种写法在真实数据里一次都没出现过
+  const legacy = mkMeta(); classifyOutcome('{"exit_code": 1}', legacy);
+  assert.equal(legacy.toolOutcomeUnknown + legacy.toolFailures, 1, '至少要有明确归类');
+});
+
+test('工具失败判定：判不出来要计入 unknown，不能默认算成功', () => {
+  const m = mkMeta(); classifyOutcome('some output with no exit information at all', m);
+  assert.equal(m.toolOutcomeUnknown, 1, '判不出来必须单列');
+  assert.equal(m.toolOutcomesKnown, 0, '判不出来不得计入可判定集（否则稀释失败率）');
+  const run = mkMeta(); classifyOutcome('Process running with session abc', run);
+  assert.equal(run.toolStillRunning, 1);
+  assert.equal(run.toolFailures + run.toolOutcomesKnown, 0, '仍在运行既不算成功也不算失败');
+});
+
+test('子代理派生的会话不得计入「你与 agent 的协作」统计', () => {
+  const human = { source: 'vscode', userMessages: 5, toolCalls: 10, durationMinutes: 5, toolCounts: {}, responseGaps: [] };
+  const sub = { source: 'subagent', userMessages: 3, toolCalls: 40, durationMinutes: 9, toolCounts: {}, responseGaps: [] };
+  const a = aggregateMetas([human, sub, sub]);
+  assert.equal(a.sessions, 1, '真人会话应只有 1 个');
+  assert.equal(a.allSessions, 3, '文件总数仍要如实报出');
+  assert.equal(a.subagentSessions, 2, '子代理数量必须单列，不能静默丢弃');
+  assert.equal(a.userMessages, 5, '子代理的任务书不是用户消息');
+  assert.equal(a.toolCalls, 10, '子代理的工具调用不并入');
+});
+
+test('失败率分母只用可判定的调用', () => {
+  const m = { source: 'vscode', userMessages: 2, toolCalls: 100, durationMinutes: 5,
+    toolFailures: 15, toolOutcomesKnown: 60, toolStillRunning: 10, toolOutcomeUnknown: 30,
+    toolCounts: {}, responseGaps: [] };
+  const a = aggregateMetas([m]);
+  assert.equal(a.failureRate.toFixed(3), (15 / 60).toFixed(3), '分母应为可判定集 60，不是总调用 100');
+  assert.ok(a.failureRateCoverage < 1, '必须能报出口径覆盖率');
+});
+
+test('不得再用「满意度」口径——纠正不等于不满，沉默不等于满意', () => {
+  assert.ok(!FACET_SRC.includes('user_satisfaction_counts'), 'satisfaction 字段应已移除');
+  assert.ok(FACET_SRC.includes('user_reaction_counts'), '应改为可观察反应');
+  assert.ok(!LABEL_SRC.includes('is dissatisfied'), '打标 prompt 不得把纠正判为不满');
+});
+
+test('失败率不得超过 100%——每个 provider 都要报可判定集', () => {
+  // 必须走真实的 parse()，不能自己拼 meta 对象——第一版就是那样写的，
+  // 把修复撤掉它照样绿，等于没测到 provider。
+  const dir = mkdtempSync(join(tmpdir(), 'adi-t-'));
+  const f = join(dir, 'session-meta.json');
+  writeFileSync(f, JSON.stringify({
+    session_id: 't1', project_path: '/tmp/x', start_time: new Date().toISOString(),
+    duration_minutes: 5, user_message_count: 3, assistant_message_count: 4,
+    tool_counts: { Bash: 20, Read: 10 }, tool_errors: 3, first_prompt: 'hi',
+  }));
+  try {
+    const m = parseClaudeCode(f);
+    assert.ok(m, 'fixture 应能解析');
+    assert.equal(m.toolOutcomesKnown, 30, 'claude-code 的可判定集应等于全部调用数');
+    const a = aggregateMetas([m]);
+    assert.ok(a.failureRate <= 1, `失败率 ${(a.failureRate * 100).toFixed(1)}% 超过 100%`);
+    assert.equal(a.failureRate.toFixed(3), (3 / 30).toFixed(3));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('HTML 输出里不得有字面 markdown 加粗（HTML 不渲染 **）', () => {
+  const h = renderHtml(renderArgs(FAKE_EN));
+  const literal = h.match(/\*\*[^*\n]{2,60}\*\*/g) || [];
+  assert.deepEqual(literal, [], `报告里出现了没被渲染的 **：${literal.join(' / ')}`);
 });
