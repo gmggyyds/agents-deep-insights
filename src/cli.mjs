@@ -49,7 +49,7 @@ function loadMetas(days, only) {
 
 function help() {
   console.log(`
-  agents-deep-insights (adi) v0.3.0
+  agents-deep-insights (adi) v0.3.1
   把本地 AI 编码会话变成可行动的摩擦报告。
   stats / doctor 完全本地不联网；run 会把脱敏后的会话片段发给你自己配置的模型。
 
@@ -187,7 +187,7 @@ async function main() {
     const spanDays = days_.length ? Math.round((Math.max(...days_) - Math.min(...days_)) / 864e5) : 0;
     const html = renderHtml({ metaAgg, facetAgg, narrative, meta: {
       generatedAt: new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',  // 标时区，否则本地时间会被误读
-      providers: used, windowDays: days, spanDays, version: '0.3.0', repairsCount } });
+      providers: used, windowDays: days, spanDays, version: '0.3.1', repairsCount } });
     const out = String(flag('out', join(process.cwd(), 'adi-report.html')));
     fs.writeFileSync(out, html);
     console.log(`  报告已生成: ${out}`);

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { facetSchema, OUTCOME, SESSION_TYPE, GOAL_CATEGORIES, FRICTION, ATTRIBUTION } from '../schema/facet.mjs';
 import { parseLoose, normalizeFacet } from '../schema/normalize.mjs';
+import { splitBudget, clipHeadTail } from '../budget.mjs';
 import { redact } from '../redact.mjs';
 
 const TASK = `Analyze this AI coding-session transcript and extract structured facets.
@@ -76,14 +77,18 @@ export function compactTranscript(lines, maxChars = 24000) {
     out.push(l); prev = l;
   }
   if (run) out.push(`  (上一工具重复 ${run} 次)`);
-  const text = redact(out.join('\n'));
-  if (text.length <= maxChars) return text;
-  // 保留头尾：会话结尾往往是最终状态、验收与用户确认，只留开头会让模型
-  // 从前半段推断整个会话的结局。外部测试发现 19/20 条样本都撞到了旧上限。
-  const head = Math.floor(maxChars * 0.6), tail = maxChars - head - 80;
-  return text.slice(0, head)
-    + `\n\n…（中间省略约 ${text.length - maxChars} 字符）…\n\n`
-    + text.slice(-tail);
+  const msgs = out.map((l) => redact(l));
+  const total = msgs.join('\n').length;
+  if (total <= maxChars) return msgs.join('\n');
+  // 旧实现对拼接后的整段做首尾保留，代价是**中段那些完整的消息整条消失**——
+  // 一条中途的验收确认要么全在、要么全没。外部复测正是拿这个抓到样本 2 的
+  // 「第一阶段完整确认」在第 38,505 字符处，两版都没进模型。
+  // 改成按条均分预算、每条各自保首尾：每条消息的开头和结尾都在，丢的是各自的中段。
+  const budgets = splitBudget(msgs.map((m) => m.length), maxChars - msgs.length);
+  const kept = msgs.map((m, i) => clipHeadTail(m, budgets[i]));
+  const dropped = total - kept.join('\n').length;
+  return kept.join('\n')
+    + (dropped > 0 ? `\n\n（注：全部 ${msgs.length} 条消息均已纳入；超长消息保留首尾，共省略约 ${dropped} 字符。）` : '');
 }
 
 export function labelWithCodex(meta, { model, strict = true, timeoutMs = 180000 } = {}) {

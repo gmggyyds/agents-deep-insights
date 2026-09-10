@@ -4,6 +4,8 @@
  * 这些问题作者本机全部测不出来——版本不同、平台不同、或功能承诺了却没实现。
  */
 import { test } from 'node:test';
+import { compactTranscript } from '../src/pipeline/label.mjs';
+import { splitBudget } from '../src/budget.mjs';
 import assert from 'node:assert/strict';
 import { redact, auditRedaction } from '../src/redact.mjs';
 import { aggregateFacets, aggregateMetas } from '../src/pipeline/aggregate.mjs';
@@ -120,4 +122,40 @@ test('缓存指纹必须包含内容，不能只看长度', async () => {
     .update('v2|codex|same-id|2|0|').update(compactTranscript(transcript)).digest('hex').slice(0, 16);
   // 等长但内容不同 —— 旧实现（只用 length）会给出相同指纹并复用过时结果
   assert.notEqual(fp(['[user] Need AAA']), fp(['[user] Need BBB']));
+});
+
+/* ── v0.3.1：第二层截断形状 ──────────────────────────────────────
+ * 复测第二轮指出：样本 2 的「第一阶段完整确认」在压缩文本第 38,505 字符处，
+ * 旧的「整段首尾保留」把它整条丢进省略中段。承诺改成「每条消息都留下首尾」，
+ * 这里就必须有测试在承诺不成立时失败。
+ */
+test('第二层：超预算时每条消息的首尾都必须存活', () => {
+  // 200 条消息，每条 500 字，共 10 万字，远超 24k 预算
+  const msgs = Array.from({ length: 200 }, (_, i) =>
+    `[assistant] 消息${i}开头${'填'.repeat(480)}消息${i}结尾`);
+  const out = compactTranscript(msgs);
+  const missHead = msgs.filter((_, i) => !out.includes(`消息${i}开头`)).length;
+  const missTail = msgs.filter((_, i) => !out.includes(`消息${i}结尾`)).length;
+  assert.equal(missHead, 0, `有 ${missHead} 条消息的开头丢失`);
+  assert.equal(missTail, 0, `有 ${missTail} 条消息的结尾丢失`);
+  assert.ok(out.length <= 24000 + 200, `输出 ${out.length} 超出预算`);
+});
+
+test('第二层：中段消息不得整条消失（旧实现的反例）', () => {
+  // 填充必须用中文：'x'.repeat(600) 会被脱敏规则当成 40+ 字符 token 整段替换掉，
+  // 底本缩到 24k 以内，截断根本不触发——这条测试第一版就是这样假绿的。
+  const msgs = Array.from({ length: 100 }, (_, i) => `[assistant] ${'填'.repeat(600)}标记${i}`);
+  const out = compactTranscript(msgs);
+  assert.ok(msgs.join('\n').length > 24000, '夹具本身没超预算，测试无意义');
+  // 正中间那条——旧的整段首尾保留必然丢掉它
+  assert.ok(out.includes('标记50'), '中段消息整条消失了');
+});
+
+test('splitBudget：短条目不得占用它用不完的额度', () => {
+  // 1 条超长 + 99 条很短。公平分配应把额度绝大部分给那条长的。
+  const lens = [50000, ...Array(99).fill(5)];
+  const b = splitBudget(lens, 10000);
+  assert.equal(b[1], 5, '短条目应当全额保留，不多拿');
+  assert.ok(b[0] > 9000, `长条目只拿到 ${b[0]}，额度被浪费了`);
+  assert.ok(b.reduce((a, c) => a + c, 0) <= 10000, '总额超预算');
 });

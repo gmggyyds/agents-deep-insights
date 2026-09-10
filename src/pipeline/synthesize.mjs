@@ -15,6 +15,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseLoose } from '../schema/normalize.mjs';
+import { splitBudget, clipHeadTail } from '../budget.mjs';
 import { redact } from '../redact.mjs';
 
 /**
@@ -183,18 +184,6 @@ export function buildEvidence(facets, { maxChars = 20000 } = {}) {
     : out;
 }
 
-/** 按各字段实际长度比例分配预算，短字段不浪费额度，长字段拿到更多。 */
-function splitBudget(lens, total) {
-  const sum = lens.reduce((a, b) => a + b, 0);
-  if (sum <= total) return lens.slice();
-  const min = 80;
-  const out = lens.map(() => min);
-  let left = total - min * lens.length;
-  if (left <= 0) return out;
-  const over = lens.map((l) => Math.max(0, l - min));
-  const overSum = over.reduce((a, b) => a + b, 0) || 1;
-  return out.map((b, i) => b + Math.floor((over[i] / overSum) * left));
-}
 
 function detectLang(text) {
   const cjk = (text.match(/[一-鿿]/g) || []).length;
