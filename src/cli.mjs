@@ -121,8 +121,9 @@ async function main() {
         console.error('  试试放宽时间窗：`adi run --days 0`，或跑 `adi doctor` 查看数据源。\n');
       } else {
         console.error(`\n  找到 ${metas.length} 个会话，但没有一个带可读的对话内容。`);
-        console.error('  Claude Code 的官方 session-meta 只含元数据、不含对话，深度分析目前只支持 Codex 会话。');
-        console.error('  如果你有 Codex 会话，试试 `adi run --provider codex --days 0`。\n');
+        console.error('  Claude Code 侧的对话正文来自 ~/.claude/projects 的 jsonl；');
+        console.error('  如果那个目录被清理过，就只剩官方 session-meta 的元数据，深度分析跑不了。');
+        console.error('  试试放宽时间窗 `adi run --days 0`，或跑 `adi doctor` 看数据源。\n');
       }
       process.exitCode = 1; return;
     }
@@ -133,7 +134,10 @@ async function main() {
     fs.mkdirSync(CACHE, { recursive: true });
 
     console.log(`\n  分析 ${picked.length} 个会话（从 ${withText.length} 个候选中分层采样）`);
-    console.log(`  provider: codex${model ? ' · model ' + model : ''}${strict ? ' · strict schema' : ' · prompt-only（降级）'}`);
+    // 数据源和打标器是两回事：现在 Claude Code 会话也能深度分析，
+    // 而打标一律走 codex CLI。原来固定印「provider: codex」会被读成「分析的是 codex 会话」。
+    const srcs = [...new Set(picked.map((m) => m.provider))].join(' + ');
+    console.log(`  数据源 ${srcs} · 打标器 codex${model ? ' ' + model : ''}${strict ? ' · strict schema' : ' · prompt-only（降级）'}`);
     console.log('  会调用 LLM 并消耗你自己的订阅额度。Ctrl-C 可随时中断，已完成的会缓存。\n');
 
     const facets = []; let repairsCount = 0, fresh = 0, cached = 0, failed = 0; let firstErr = null;
