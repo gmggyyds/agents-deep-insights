@@ -13,6 +13,49 @@
 - 跨工具同尺对比（同一类摩擦在 Codex 与 Claude Code 上是否都排前列）
 - 周度清单出口：未完成 / 半成品 / 已出 bug / 可合并
 
+## [0.6.1] - 2026-09-10
+
+**第一次真正做了视觉复查**（此前每一版都在「未覆盖面」里写着「没做视觉复查」）。
+用 ego-browser 把报告渲染出来、截图 Read 回来看，一眼看出三个缺陷——
+**没有一个是 DOM 断言或正则检查能发现的**。
+
+### 修复：模板字面量原样印在了页面上
+
+规则区显示成 `先写最终物 / ${esc(e.heading)}` —— 未插值的模板字符串直接成了可见文本。
+
+这是 v0.5.2 修双语泄漏时我自己引入的回归：正则替换套了两层，
+`${BI ? '…${esc(e.heading)}…' : ''}` 的内层是单引号，`${}` 不再插值。**共 5 处。**
+
+已加测试：渲染结果里不得出现 `${…}` 形态的字符串。
+此前所有测试都看不见它——泄漏测试会剥掉 en 标记的元素，而这串字符里没有中文。
+
+### 修复：双语对照下行内元素首尾相连
+
+- 标题渲染成 `你的 AI 编码摩擦报告Your AI Coding Friction Report`
+- 数字卡片渲染成 `深度分析Deeply analyzed`、`提交次数Commits`
+- 徽章渲染成 `13 个会话 · 19 次13 sessions · 19×`
+- 按钮渲染成 `复制勾选项Copy checked`
+
+块级元素（`<p>` / `<div>`）本来就各占一行没事，**行内 `<span>` 会直接粘住**。
+现在给行内语境下的 `.en` 加了 `display:block`。
+
+### 修复：400px 下语言开关被逐字断行
+
+`中文` 竖着断成了「中 / 文」。按钮内禁断行 + 整条允许换行。
+
+### 关于截图能力的更正
+
+本机 memory 记着「ego-lite 截图通道坏了，三条路全超时」（同日早些时候实测所得）。
+**现在实测可用**：`page.screenshot()` 与 `page.cdp('Page.captureScreenshot')` 都正常。
+记忆是当时的事实、不是现在的事实——引用前应当复测。
+
+仍需注意 `screenshot_blank_after_scroll`：clip 超出视口会截出白图，
+必须先 `scrollIntoView` 再按视口坐标截。
+
+### 测试
+
+56 → 58。
+
 ## [0.6.0] - 2026-09-10
 
 自查跑完 v0.5.2 后，我给自己列的两个短板：**样本量**（6 个会话撑不起「模式」类结论）
@@ -444,7 +487,8 @@ v0.3.0 修第一层（单条消息 400→1200）时，**给第二层制造了回
 - 仅在 macOS + codex-cli 0.131.0 + gpt-5.5 上实测。
 - codex-cli 0.131.0 无法使用账号默认模型（需 `--model gpt-5.5` 或升级 Codex）。
 
-[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.0...v0.5.1

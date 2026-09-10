@@ -103,9 +103,17 @@ footer{margin-top:56px;padding-top:18px;border-top:2px solid #e2ded7;color:#8a8a
 body.lang-zh .en{display:none}body.lang-en .zh{display:none}
 .note.en code,.rule code.en{display:inline-block}
 body.lang-en h2.zh,body.lang-zh h2.en{display:none}
-.en{color:#4a4a4a}p.en{font-size:14px;font-style:normal;border-left:2px solid #e2ded7;padding-left:12px;margin-top:-4px}
+.en{color:#4a4a4a}
+/* 双语对照下行内元素会首尾相连（实测 h1 出现「…报告Your AI Coding…」）：
+   同一行里的 zh/en 强制换行显示，块级的本来就各占一行不受影响 */
+body.lang-both h1 .en,body.lang-both .card .en,body.lang-both .n .en,
+body.lang-both .copyall .en,body.lang-both .copy1 .en,body.lang-both .row .k .en,body.lang-both .row .v .en,
+body.lang-both .attr .en{display:block}
+body.lang-both .n .en,body.lang-both .row .v .en{font-size:.9em;opacity:.75}p.en{font-size:14px;font-style:normal;border-left:2px solid #e2ded7;padding-left:12px;margin-top:-4px}
 .en-inline{font-weight:400;color:#8a8a8a;font-size:.9em}
-.langbar{display:flex;gap:6px;align-items:center;margin:0 0 18px}
+.langbar{display:flex;gap:6px;align-items:center;margin:0 0 18px;flex-wrap:wrap}
+/* 400px 下按钮会被挤到逐字断行（实测「中文」竖成了 中/文）：按钮内禁断行，整条允许换行 */
+.langbar button,.langbar>span{white-space:nowrap}
 .langbar button{border:1.5px solid #ddd8d0;background:#fff;color:#4a4a4a;border-radius:20px;
 padding:5px 14px;font-size:12.5px;cursor:pointer;font-family:inherit}
 .langbar button.on{background:#b4553f;border-color:#b4553f;color:#fff}
@@ -174,7 +182,7 @@ covering ${Math.round(metaAgg.failureRateCoverage * 100)}% of calls; the rest ar
 ${N && N.themes && N.themes.length ? `
 ${biH('你主要在做什么', 'What You Work On')}
 ${N.themes.map((t, i) => { const e = (pick('themes') || [])[i]; return `
-<div class="blk theme"><h4><span class="zh">${esc(t.name)}</span>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.name)}</span>' : ''}` : ''}
+<div class="blk theme"><h4><span class="zh">${esc(t.name)}</span>${e && BI ? `<span class="en-inline en"> / ${esc(e.name)}</span>` : ''}
 <span class="n"><span class="zh">${t.session_estimate} 个会话</span>${BI ? `<span class="en">${t.session_estimate} sessions</span>` : ''}</span></h4>
 ${bi(t.detail, e && e.detail)}</div>`; }).join('')}` : ''}
 
@@ -196,7 +204,7 @@ ${N && N.impressive ? `
 ${biH('你做得漂亮的地方', 'Impressive Things You Did')}
 ${bi(N.impressive.summary, pick('impressive.summary'), 'p', 'nar')}
 ${(N.impressive.items || []).map((i, ix) => { const e = (pick('impressive.items') || [])[ix]; return `
-<div class="blk good"><h4><span class="zh">${esc(i.title)}</span>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.title)}</span>' : ''}` : ''}</h4>
+<div class="blk good"><h4><span class="zh">${esc(i.title)}</span>${e && BI ? `<span class="en-inline en"> / ${esc(e.title)}</span>` : ''}</h4>
 ${bi(i.detail, e && e.detail)}</div>`; }).join('')}` : ''}
 
 ${biH('哪里出了问题', 'Where Things Go Wrong')}
@@ -234,7 +242,7 @@ ${BI ? '<div class="note en">Check the ones you want, hit "复制勾选项", and
 ${N.rules.map((r, i) => { const e = (pick('rules') || [])[i]; return `
 <div class="rule">${(() => { const c = (facetAgg.ruleCandidates || []).find((x) => x.key === r.friction_key); return c ? `<span class="n"><span class="zh">${c.sessions} 个会话 · ${c.count} 次</span>${BI ? `<span class="en">${c.sessions} sessions · ${c.count}×</span>` : ''}</span>` : ''; })()}
 <label class="rh"><input type="checkbox" class="rk" checked data-rule="${esc('## ' + r.heading + '\n- ' + r.rule)}">
-<b><span class="zh">${esc(r.heading)}</span></b>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.heading)}</span>' : ''}` : ''}</label>
+<b><span class="zh">${esc(r.heading)}</span></b>${e && BI ? `<span class="en-inline en"> / ${esc(e.heading)}</span>` : ''}</label>
 <code class="zh">${esc(r.rule)}</code>${e && BI ? `<code class="en">${esc(e.rule)}</code>` : ''}
 ${bi(r.why, e && e.why, 'div', 'why')}
 ${r.evidence_quote ? `<div class="quote">证据：${esc(r.evidence_quote)}</div>` : ''}
@@ -254,7 +262,7 @@ ${biH('下一步可以试试', 'New Ways to Use Codex')}
 <div class="note zh">每条下面的提示词可以直接整段粘进 Codex。</div>
 ${BI ? '<div class="note en">Each prompt below can be pasted into Codex as-is.</div>' : ''}
 ${N.next_steps.map((s2, i) => { const e = (pick('next_steps') || [])[i]; return `
-<div class="step"><h4><span class="zh">${esc(s2.title)}</span>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.title)}</span>' : ''}` : ''}</h4>
+<div class="step"><h4><span class="zh">${esc(s2.title)}</span>${e && BI ? `<span class="en-inline en"> / ${esc(e.title)}</span>` : ''}</h4>
 ${bi(s2.why_for_you, e && e.why_for_you)}
 <pre>${esc(s2.copyable_prompt)}</pre>
 <button class="copy1" onclick="copyPre(this)"><span class="zh">复制提示词</span>${BI ? '<span class="en">Copy prompt</span>' : ''}</button></div>`; }).join('')}` : ''}
@@ -263,7 +271,7 @@ ${N && N.horizon ? `
 ${biH('再往前一步', 'On the Horizon')}
 ${bi(N.horizon.summary, pick('horizon.summary'), 'div', 'lead')}
 ${(N.horizon.items || []).map((i, ix) => { const e = (pick('horizon.items') || [])[ix]; return `
-<div class="blk far"><h4><span class="zh">${esc(i.title)}</span>${e && BI ? `${BI ? '<span class="en-inline en"> / ${esc(e.title)}</span>' : ''}` : ''}</h4>
+<div class="blk far"><h4><span class="zh">${esc(i.title)}</span>${e && BI ? `<span class="en-inline en"> / ${esc(e.title)}</span>` : ''}</h4>
 ${bi(i.vision, e && e.vision)}</div>`; }).join('')}` : ''}
 
 <details><summary><span class="zh">展开：支撑这些结论的原始统计</span>${BI ? '<span class="en">Expand: the raw statistics behind these conclusions</span>' : ''}</summary>

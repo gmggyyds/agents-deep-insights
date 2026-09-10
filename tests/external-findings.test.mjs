@@ -497,3 +497,25 @@ test('只有部分数据源具备的信号，必须用自己的分母', () => {
   assert.ok(h.includes('1/1 个会话有显式任务分解'), `分母用错了：${(h.match(/\d+\/\d+ 个会话有显式任务分解/) || [])[0]}`);
   assert.ok(!h.includes('1/31 个会话有显式任务分解'), '不得用全部会话当分母');
 });
+
+test('渲染结果里不得出现未插值的模板字面量', () => {
+  // 实测踩过：修双语泄漏时把 ${BI ? '…${esc(e.heading)}…' : ''} 写成了单引号，
+  // 内层 ${} 不再插值，页面上直接印出 `先写最终物 / ${esc(e.heading)}`。
+  // 泄漏测试看不见它（这串没有中文），DOM 断言也不会报——只有真看渲染结果才发现。
+  for (const h of [renderHtml(renderArgs(FAKE_EN)), renderHtml(renderArgs(null))]) {
+    const literals = h.match(/\$\{[^}\n]{1,60}\}/g) || [];
+    assert.deepEqual(literals, [], `页面上出现了未插值的模板：${literals.slice(0, 5).join(' / ')}`);
+  }
+});
+
+test('双语对照下行内元素必须分行，不能首尾相连', () => {
+  // 实测踩过：h1 渲染成「你的 AI 编码摩擦报告Your AI Coding Friction Report」，
+  // 数字卡片渲染成「深度分析Deeply analyzed」。块级元素各占一行没事，行内的会粘住。
+  const h = renderHtml(renderArgs(FAKE_EN));
+  const css = (h.match(/<style>([\s\S]*?)<\/style>/) || [, ''])[1];
+  const rule = css.match(/body\.lang-both[^{]*\{display:block\}/);
+  assert.ok(rule, '缺少「行内 en 分行」的样式规则');
+  for (const sel of ['h1 .en', '.card .en', '.copyall .en']) {
+    assert.ok(rule[0].includes(sel), `${sel} 未包含在分行规则里`);
+  }
+});
