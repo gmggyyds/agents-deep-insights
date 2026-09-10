@@ -40,7 +40,7 @@ export function auditRedaction(text) {
     ['jwt', /\beyJ[A-Za-z0-9_\-]{15,}\.[A-Za-z0-9_\-]{10,}/g],
     ['api_key', /\b(?:sk-ant-|sk-|ghp_|github_pat_|xoxb-|AKIA|glpat-|AIza)[A-Za-z0-9_\-]{12,}/g],
     ['auth_header', /\b(?:Authorization|Proxy-Authorization)\s*:\s*(?:Bearer|Basic|Token|token)\s+\S+/gi],
-    ['credential_field', /["']?\b(?:app_?secret|client_?secret|access_?token|refresh_?token|api_?key|apikey|secret_?key|password|passwd|auth_?token|session_?token|credentials?|token|secret)\b["']?\s*[:=]\s*["']?[^\s"',;}\]]{6,}/gi],
+    ['credential_field', /["']?\b(?:app_?secret|client_?secret|access_?token|refresh_?token|id_?token|api_?key|apikey|secret_?key|private_?key|password|passwd|auth_?token|session_?token|credentials?|token|secret)\b["']?\s*[:=]\s*["']?[^\s"',;}\]]{6,}/gi],
     ['email', /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b/g],
     ['long_token', /\b[A-Za-z0-9_\-]{40,}\b/g],
   ];

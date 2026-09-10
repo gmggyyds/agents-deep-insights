@@ -128,8 +128,9 @@ evidence; it never counts.
 
 **The model labels; the code counts.**
 
-Every count, ranking and threshold decision is computed by deterministic code. The model only produces a
-structured label for a single session. That is what makes the numbers auditable and reproducible — otherwise
+Per-session friction counts and attribution are **judged by the model**. Aggregation, ranking and threshold
+decisions across sessions are computed by deterministic code, which never revises the model's judgement.
+So a "count" in the report is a sum of model outputs, not an independent measurement — the report says so too. That is what makes the numbers auditable and reproducible — otherwise
 a claim like "this problem occurred 62 times" cannot be used to justify a rule.
 
 Full design and measurements: [docs/DESIGN.md](docs/DESIGN.md) (written in Chinese).

@@ -74,7 +74,21 @@ export function aggregateFacets(facets, { noiseFloor = NOISE_FLOOR, metas = null
   };
   const friction = sum(FRICTION, 'friction_counts');
   const goals = sum(GOAL_CATEGORIES, 'goal_categories');
-  const attribution = sum(ATTRIBUTION, 'friction_attribution');
+  // 归因汇总由「该类别的归因 × 该类别的次数」推导，不再单独存会话级总数。
+  // unknown 单列——原因不明的失败不塞进 environmental 充数。
+  const attribution = { user_actionable: 0, agent_capability: 0, environmental: 0, unknown: 0 };
+  const attrByCategory = {};          // key -> {归因: 会话数}
+  for (const f of facets) {
+    const counts = f?.friction_counts || {};
+    const attrs = f?.friction_attribution || {};
+    for (const k of FRICTION) {
+      const n = counts[k] || 0;
+      if (!n) continue;
+      const a = ATTRIBUTION.includes(attrs[k]) ? attrs[k] : 'unknown';
+      attribution[a] += n;
+      (attrByCategory[k] ||= {})[a] = (attrByCategory[k]?.[a] || 0) + 1;
+    }
+  }
 
   const rank = (o) => Object.entries(o.total)
     .filter(([, v]) => v >= noiseFloor)
@@ -102,16 +116,21 @@ export function aggregateFacets(facets, { noiseFloor = NOISE_FLOOR, metas = null
   return {
     n: facets.length,
     friction: rank(friction), goals: rank(goals),
-    attribution: attribution.total,
+    attribution,
     outcomes: counts('outcome'), sessionTypes: counts('session_type'),
     // 立规候选：两个条件同时满足才提
     //   ① 重复 >= 3 个会话（对齐「同坑第 N 次才升格」的做法）
-    //   ② 整体归因里存在用户可改成分——纯环境/纯模型能力的摩擦，写成规则也改不掉
-    // ② 此前漏实现（README 承诺了、代码没做），由外部测试发现：3 条纯环境故障
-    // 样本照样产出 tool_failed 规则候选。
-    ruleCandidates: attribution.total.user_actionable > 0
-      ? rank(friction).filter((f) => f.sessions >= RULE_THRESHOLD)
-      : [],
+    //   ② **这一类摩擦本身**在多数会话里被归为用户可改
+    // 此前用的是全局开关（整体有任何 user_actionable 就放行所有类别），外部复测
+    // 用「3 条纯环境 tool_failed + 1 条无关的 user_actionable」就把它打穿了。
+    // 责任必须绑到类别，不能靠会话级总数。
+    ruleCandidates: rank(friction).filter((f) => {
+      if (f.sessions < RULE_THRESHOLD) return false;
+      const by = attrByCategory[f.key] || {};
+      const total = Object.values(by).reduce((a, b) => a + b, 0) || 1;
+      return (by.user_actionable || 0) / total > 0.5;   // 过半会话判定为用户可改
+    }).map((f) => ({ ...f, attribution: attrByCategory[f.key] || {} })),
+    attributionByCategory: attrByCategory,
     repeatedInstructions: Object.entries(instructions)
       .filter(([, v]) => v >= 2).sort((a, b) => b[1] - a[1])
       .map(([text, n]) => ({ text, n })),

@@ -18,11 +18,15 @@ const TASK = `Analyze this AI coding-session transcript and extract structured f
 Rules:
 - Count only what the USER explicitly asked for. Do not infer goals from tool activity alone.
 - Be conservative when evidence is weak; prefer unclear_from_transcript over guessing.
-- friction_attribution splits the frictions you counted into who can act on them:
+- friction_attribution assigns ONE responsibility to EACH friction category separately:
     user_actionable  = the user could have avoided it (vague request, missing context, late constraint)
     agent_capability = the assistant's own mistake or limitation
     environmental    = tooling, network, permissions, external services
-  The three numbers should roughly sum to the total frictions counted.
+    unknown          = the transcript does not show why it failed
+    none             = this category did not occur in this session
+  Judge each category on its own evidence. Do NOT let one category's responsibility
+  spill onto another. If a tool failed and the transcript never says why, answer
+  "unknown" — do not default to "environmental" to make the numbers look complete.
 - user_instructions: verbatim short instructions the user repeated or emphasized.`;
 
 function buildPrompt(transcript, meta, { withEnums }) {
@@ -39,7 +43,8 @@ function buildPrompt(transcript, meta, { withEnums }) {
 - session_type: ${SESSION_TYPE.join(' | ')}
 - goal_categories keys: ${GOAL_CATEGORIES.join(', ')}
 - friction_counts keys: ${FRICTION.join(', ')}
-- friction_attribution keys: ${ATTRIBUTION.join(', ')}
+- friction_attribution: one value per friction category, chosen from:
+  none | user_actionable | agent_capability | environmental | unknown
 
 Return an object with keys: outcome, session_type, goal_categories, friction_counts,
 friction_attribution, friction_detail (string), user_instructions (array of strings), brief_summary (string).

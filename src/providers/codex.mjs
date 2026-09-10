@@ -48,6 +48,17 @@ export function discover({ days = 30 } = {}) {
  * <codex_internal_context 是 Codex 自动续跑注入的，作者本机（0.131.0）不产生这个标记，
  * 由 0.153.4 上的外部测试发现（该版本 20 条样本里有 84 条被误计）。
  */
+/**
+ * 单条消息的截断。400 字太短——一条长答复的**末尾**往往是验收边界与限制说明
+ * （「仅验证了本地入口，外部系统未验」这类），只留开头会把边界一起切掉，
+ * 而上层的首尾保留策略无法恢复已经在这一层丢掉的内容。
+ */
+function clipMessage(t, max = 1200) {
+  if (t.length <= max) return t;
+  const head = Math.floor(max * 0.62), tail = max - head - 16;
+  return `${t.slice(0, head)} …[略${t.length - max}字]… ${t.slice(-tail)}`;
+}
+
 const LOW_SIGNAL = /^(<turn_aborted>|<environment_context>|<codex_internal_context|# AGENTS\.md|<permissions instructions>|<user_instructions>)/;
 
 /** L1：纯代码提取 session-meta。零 LLM。 */
@@ -89,7 +100,7 @@ export function parse(file) {
           }
         }
       } else if (pl.role === 'assistant') { meta.assistantMessages++; if (ts) lastAssistantTs = ts; }
-      if (clean) meta.transcript.push(`[${pl.role}] ${redact(clean).slice(0, 400)}`);
+      if (clean) meta.transcript.push(`[${pl.role}] ${clipMessage(redact(clean))}`);
     } else if (pl.type === 'function_call' || pl.type === 'custom_tool_call') {
       meta.toolCalls++;
       const n = pl.name || 'unknown';

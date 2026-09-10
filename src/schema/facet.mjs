@@ -31,8 +31,21 @@ export const FRICTION = [
   'external_issue',
 ];
 
-/** 归因：只有 user-actionable 的摩擦才进规则候选。官方没有这一维。 */
-export const ATTRIBUTION = ['user_actionable', 'agent_capability', 'environmental'];
+/**
+ * 归因：只有 user_actionable 的摩擦才进规则候选。官方没有这一维。
+ *
+ * v0.3 起改为**按摩擦类别逐个归因**，不再是会话级三个总数。
+ * 原因（外部复测实测）：只有会话级总数时，无法把责任绑到具体类别——
+ * 一个会话里只要出现任何 user_actionable 摩擦，纯环境的 tool_failed 也会跟着
+ * 进入规则候选。而写成规则也改不掉环境问题。
+ *
+ * `unknown` 是必须的：原因不明的工具失败应当单列，不能默认塞进 environmental
+ * 充数——那会让归因比例看起来精确，实际是把「不知道」伪装成「不怪你」。
+ */
+export const ATTRIBUTION = ['user_actionable', 'agent_capability', 'environmental', 'unknown'];
+
+/** 每类摩擦的归因取值；none 表示该类别本次未发生。 */
+export const ATTRIBUTION_OR_NONE = ['none', ...ATTRIBUTION];
 
 /**
  * 常见同义词 → 表内 key。
@@ -77,11 +90,14 @@ export function facetSchema() {
       session_type: { type: 'string', enum: SESSION_TYPE },
       goal_categories: denseCounts(GOAL_CATEGORIES),
       friction_counts: denseCounts(FRICTION),
+      // 逐类别归因：key 是摩擦类别，value 是该类摩擦这次该归给谁
       friction_attribution: {
         type: 'object',
         additionalProperties: false,
-        properties: Object.fromEntries(ATTRIBUTION.map((a) => [a, { type: 'integer' }])),
-        required: [...ATTRIBUTION],
+        properties: Object.fromEntries(
+          FRICTION.map((f) => [f, { type: 'string', enum: ATTRIBUTION_OR_NONE }]),
+        ),
+        required: [...FRICTION],
       },
       friction_detail: { type: 'string' },
       user_instructions: { type: 'array', items: { type: 'string' } },
@@ -102,5 +118,4 @@ export const ENUM_OF = {
 export const COUNT_KEYS_OF = {
   goal_categories: GOAL_CATEGORIES,
   friction_counts: FRICTION,
-  friction_attribution: ATTRIBUTION,
 };

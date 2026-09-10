@@ -10,6 +10,7 @@ const LABEL = {
   understand_codebase: '理解代码库', write_tests: '写测试', write_docs: '写文档', deploy_infra: '部署运维',
   warmup_minimal: '缓存预热',
   user_actionable: '你自己能改的', agent_capability: '助手能力所限', environmental: '环境或工具问题',
+  unknown: '原因未确定',
 };
 const L = (k) => LABEL[k] || k;
 
@@ -38,8 +39,9 @@ h1{font-size:32px;margin:0 0 8px}h2{font-size:21px;margin:44px 0 14px;padding-le
 .row{display:grid;grid-template-columns:150px 1fr 110px;gap:10px;align-items:center;margin:7px 0;font-size:14px}
 .t{background:#eeebe6;border-radius:5px;height:17px;overflow:hidden}.t i{display:block;height:100%;background:#b4553f;border-radius:5px}
 .row .v{font-size:13px;color:#4a4a4a}.row small{color:#9a9a9a}
-.attr{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}
+.attr{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
 .attr div{border-radius:12px;padding:16px;text-align:center;border:2px solid}
+.a3{background:#f4f1ec;border-color:#c9c4bc}
 .a0{background:#fbeee9;border-color:#b4553f}.a1{background:#eef1f7;border-color:#7a8db5}.a2{background:#eeebe6;border-color:#a89f92}
 .attr b{display:block;font-size:26px}.attr span{font-size:12.5px}
 .note{background:#fff;border:1.5px solid #ddd8d0;border-radius:12px;padding:18px 20px;margin:16px 0;font-size:14px}
@@ -63,7 +65,7 @@ footer{margin-top:56px;padding-top:18px;border-top:2px solid #e2ded7;color:#8a8a
 </style></head><body><div class="w">
 <h1>你的 AI 编码摩擦报告</h1>
 <p class="sub">哪些问题在重复发生，以及其中哪些是你自己能改的。</p>
-<p class="meta">${esc(meta.generatedAt)} · 数据源 ${esc(meta.providers.join(' + '))} · 近 ${meta.windowDays} 天 ·
+<p class="meta">${esc(meta.generatedAt)} · 数据源 ${esc(meta.providers.join(' + '))} · ${meta.windowDays > 0 ? `近 ${meta.windowDays} 天` : '全部时间'} ·
 深度分析 ${facetAgg.n} 个会话（覆盖 ${esc(meta.spanDays)} 天）· 采集与统计在本地完成，
 仅脱敏后的会话片段发送给你自己配置的模型</p>
 
@@ -86,6 +88,7 @@ ${(N.working_well.items || []).map((i) => `<div class="blk"><h4>${esc(i.title)}<
 <div class="a0"><b>${pct(facetAgg.attribution.user_actionable)}%</b><span>${esc(L('user_actionable'))}</span></div>
 <div class="a1"><b>${pct(facetAgg.attribution.agent_capability)}%</b><span>${esc(L('agent_capability'))}</span></div>
 <div class="a2"><b>${pct(facetAgg.attribution.environmental)}%</b><span>${esc(L('environmental'))}</span></div>
+${facetAgg.attribution.unknown ? `<div class="a3"><b>${pct(facetAgg.attribution.unknown)}%</b><span>${esc(L('unknown'))}</span></div>` : ''}
 </div>
 <div class="note">只有第一格是你下次能直接改进的。后两格换个提问方式也不会消失——
 把注意力放在第一格上，投入产出比最高。</div>
@@ -126,7 +129,9 @@ ${facetAgg.goals.length ? bar(facetAgg.goals, gmax) : '<div class="note">样本�
 
 <div class="note warn"><b>关于这些数字的可信度</b><br>
 顶部四个数字取自全部会话；摩擦与归因取自深度分析的那部分样本，两者范围不同。
-计数由确定性代码统计，不经过模型；摩擦类别由模型对单个会话打标后再由代码汇总。
+每个会话的摩擦次数与归因**由模型判定**；跨会话的汇总、排序、门槛判定由确定性代码完成，
+代码不对模型的判断做二次修改。所以「次数」是模型输出的加总，不是独立测量值。
+原因未确定的摩擦单独计入「原因未确定」，不并入环境类。
 超长会话在送入模型前会保留首尾、省略中段，因此极长会话的中间过程可能未被覆盖。
 实测单会话打标存在 ±1 的边界判断噪声，
 因此<b>单条数字不必细究，趋势和排序才是可用的</b>。分类判断（结果、会话类型）在实测中稳定复现。

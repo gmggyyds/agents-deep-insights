@@ -49,19 +49,51 @@ test('脱敏不误伤正常技术文本', () => {
   }
 });
 
-test('规则候选必须落实 user_actionable 过滤（README 承诺过但代码没做）', () => {
-  const envOnly = Array.from({ length: 3 }, () => ({
+test('规则候选必须按摩擦类别匹配归因，不能用会话级全局开关', () => {
+  const env = (n) => Array.from({ length: n }, () => ({
     friction_counts: { tool_failed: 1 },
-    friction_attribution: { user_actionable: 0, agent_capability: 0, environmental: 1 },
+    friction_attribution: { tool_failed: 'environmental' },
   }));
-  assert.deepEqual(aggregateFacets(envOnly).ruleCandidates, [],
+
+  assert.deepEqual(aggregateFacets(env(3)).ruleCandidates, [],
     '纯环境故障不该产出规则候选——写成规则也改不掉');
 
-  const mixed = Array.from({ length: 3 }, () => ({
+  // 外部复测打穿旧实现的反例：3 条纯环境 + 1 条**无关的** user_actionable。
+  // 旧实现是全局开关（整体有任何 user_actionable 就放行所有类别），
+  // 于是 tool_failed 又冒出来当候选。
+  const mixed = [...env(3), {
+    friction_counts: { user_unclear: 1 },
+    friction_attribution: { user_unclear: 'user_actionable' },
+  }];
+  assert.deepEqual(aggregateFacets(mixed).ruleCandidates.map((r) => r.key), [],
+    '别的类别是用户可改，不能让纯环境的 tool_failed 跟着进候选');
+
+  // 真正该产出的：这一类摩擦本身在多数会话里被判为用户可改
+  const real = Array.from({ length: 3 }, () => ({
     friction_counts: { excessive_changes: 1 },
-    friction_attribution: { user_actionable: 1, agent_capability: 0, environmental: 0 },
+    friction_attribution: { excessive_changes: 'user_actionable' },
   }));
-  assert.ok(aggregateFacets(mixed).ruleCandidates.length > 0, '含用户可改成分时应产出候选');
+  assert.deepEqual(aggregateFacets(real).ruleCandidates.map((r) => r.key), ['excessive_changes']);
+});
+
+test('原因不明的摩擦单列 unknown，不塞进 environmental 充数', () => {
+  const a = aggregateFacets([{
+    friction_counts: { buggy_code: 2, tool_failed: 1 },
+    friction_attribution: { buggy_code: 'unknown', tool_failed: 'environmental' },
+  }]);
+  assert.equal(a.attribution.unknown, 2, '未知原因必须单独计');
+  assert.equal(a.attribution.environmental, 1, '不能把未知并进环境');
+});
+
+test('旧的会话级归因格式降级为 unknown，而不是硬套成类别归因', async () => {
+  const { normalizeFacet } = await import('../src/schema/normalize.mjs');
+  const { facet, repairs } = normalizeFacet({
+    friction_counts: { tool_failed: 3 },
+    friction_attribution: { user_actionable: 0, agent_capability: 0, environmental: 1 },  // 旧格式
+  });
+  assert.equal(facet.friction_attribution.tool_failed, 'unknown',
+    '旧格式没有类别级证据，宁可说不知道');
+  assert.ok(repairs.coerced_types.some((r) => r.includes('旧的会话级格式')));
 });
 
 test('Windows 路径不能整个当成项目名', () => {

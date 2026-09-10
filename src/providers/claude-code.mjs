@@ -58,7 +58,7 @@ export function parse(file) {
     linesRemoved: d.lines_removed || 0,
     filesModified: d.files_modified || 0,
     // 官方只给首条 prompt，没有完整 transcript —— L3 打标时据此降级
-    transcript: d.first_prompt ? [`[user] ${redact(d.first_prompt).slice(0, 400)}`] : [],
+    transcript: d.first_prompt ? [`[user] ${redact(d.first_prompt).slice(0, 1200)}`] : [],
     transcriptComplete: false,
   };
 }

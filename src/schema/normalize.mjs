@@ -9,7 +9,7 @@
  * 所以本模块必须同时管 key 和 type。
  */
 
-import { ENUM_OF, COUNT_KEYS_OF, ALIASES } from './facet.mjs';
+import { ENUM_OF, COUNT_KEYS_OF, ALIASES, FRICTION, ATTRIBUTION_OR_NONE } from './facet.mjs';
 
 /** 最小 JSON 修复：剥 markdown 围栏、截首个对象、去尾逗号。不引第三方依赖。 */
 export function parseLoose(raw) {
@@ -109,6 +109,7 @@ export function normalizeFacet(input) {
   }
 
   for (const [field, keys] of Object.entries(COUNT_KEYS_OF)) {
+    if (field === 'friction_attribution') continue;   // 已改为字符串枚举，不走计数路径
     const src = input?.[field];
     const acc = Object.fromEntries(keys.map((k) => [k, 0]));
     if (src && typeof src === 'object' && !Array.isArray(src)) {
@@ -124,6 +125,30 @@ export function normalizeFacet(input) {
       }
     }
     out[field] = acc;
+  }
+
+  // friction_attribution：新格式按类别，旧缓存是会话级三个数字。
+  // 旧格式无法把责任绑到类别，一律降级为 unknown——宁可说「不知道」，
+  // 也不能把旧的会话级总数当成类别级证据用。
+  {
+    const src = input?.friction_attribution;
+    const acc = Object.fromEntries(FRICTION.map((k) => [k, 'none']));
+    let legacy = false;
+    if (src && typeof src === 'object' && !Array.isArray(src)) {
+      for (const [k, v] of Object.entries(src)) {
+        if (typeof v === 'number') { legacy = true; continue; }
+        const target = mapKey(k, FRICTION);
+        const val = typeof v === 'string' ? v.toLowerCase().trim().replace(/[-\s]+/g, '_') : null;
+        if (!target) { repairs.unmapped_keys.push(`friction_attribution.${k}`); continue; }
+        acc[target] = ATTRIBUTION_OR_NONE.includes(val) ? val : 'unknown';
+        if (!ATTRIBUTION_OR_NONE.includes(val)) repairs.coerced_types.push(`friction_attribution.${k}: ${v} -> unknown`);
+      }
+    }
+    if (legacy) {
+      for (const k of FRICTION) if ((out.friction_counts?.[k] || 0) > 0) acc[k] = 'unknown';
+      repairs.coerced_types.push('friction_attribution: 旧的会话级格式 -> 逐类别 unknown');
+    }
+    out.friction_attribution = acc;
   }
 
   const detailRaw = input?.friction_detail;

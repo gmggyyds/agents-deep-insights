@@ -140,25 +140,60 @@ ${lang === 'zh' ? 'Write all free-text in Simplified Chinese.' : 'Write all free
 RESPOND WITH ONLY A VALID JSON OBJECT matching the provided schema.`;
 }
 
-/** 从 facet 里取自由文本作为证据。这些字段此前被采集但从未使用。 */
-export function buildEvidence(facets, { maxChars = 9000 } = {}) {
-  const parts = [];
+/**
+ * 从 facet 里取自由文本作为证据。
+ *
+ * 预算按会话**均分**，不是先到先得。旧实现直接 slice 前 9000 字符，导致
+ * 20 条样本里只有前 8 条完整进入合成、后 11 条的自由文本完全缺席，而且没有任何提示
+ * （外部复测实测：证据总长 21,680，上限 9,000，样本 10–20 全部丢失）。
+ * 汇总数字仍然覆盖全部会话，缺的是叙事所依据的原文——报告会因此只讲前半批的故事。
+ */
+export function buildEvidence(facets, { maxChars = 20000 } = {}) {
+  const rows = [];
   for (const f of facets) {
-    const bits = [];
-    if (f.brief_summary) bits.push(f.brief_summary);
-    if (f.friction_detail) bits.push(`摩擦: ${f.friction_detail}`);
-    if (f.user_instructions?.length) bits.push(`用户指令: ${f.user_instructions.join(' / ')}`);
-    if (bits.length) parts.push(`- ${bits.join(' | ')}`);
+    const parts = [];
+    if (f.brief_summary) parts.push(['', String(f.brief_summary)]);
+    if (f.friction_detail) parts.push(['摩擦: ', String(f.friction_detail)]);
+    if (f.user_instructions?.length) parts.push(['用户指令: ', f.user_instructions.join(' / ')]);
+    if (parts.length) rows.push(parts);
   }
-  return redact(parts.join('\n')).slice(0, maxChars);
+  if (!rows.length) return '';
+
+  const overhead = rows.length * 6;
+  const perRow = Math.max(240, Math.floor((maxChars - overhead) / rows.length));
+  let clipped = 0;
+
+  // 逐字段截断，不是拼接后再截。拼接一做，前一个字段的结尾就落进中段被省略掉，
+  // 而结尾往往正是验收边界与限制说明（「仅验证本地入口，外部系统未验」这类）。
+  const clip = (t, max) => {
+    if (t.length <= max) return t;
+    clipped += t.length - max;
+    const head = Math.floor(max * 0.6), tail = Math.max(40, max - head - 16);
+    return `${t.slice(0, head)} …[略${t.length - max}字]… ${t.slice(-tail)}`;
+  };
+
+  const lines = rows.map((parts) => {
+    const budgets = splitBudget(parts.map(([, t]) => t.length), perRow);
+    return '- ' + parts.map(([label, t], i) => label + clip(t, budgets[i])).join(' | ');
+  });
+
+  const out = redact(lines.join('\n'));
+  return clipped > 0
+    ? `${out}\n\n（注：全部 ${rows.length} 条会话证据均已纳入；超长字段保留首尾并标注省略量。）`
+    : out;
 }
 
-/** codex 会把整个 models 列表塞进一行 ERROR 日志，几十 KB，会淹没真正的报错。 */
-function require$fs2() { return globalThis.__adi_fs; }
-
-function cleanErr(s) {
-  return s.split('\n').filter((l) => l.length < 400 && !/models_manager|models cache/.test(l))
-          .join('\n').trim().slice(0, 400);
+/** 按各字段实际长度比例分配预算，短字段不浪费额度，长字段拿到更多。 */
+function splitBudget(lens, total) {
+  const sum = lens.reduce((a, b) => a + b, 0);
+  if (sum <= total) return lens.slice();
+  const min = 80;
+  const out = lens.map(() => min);
+  let left = total - min * lens.length;
+  if (left <= 0) return out;
+  const over = lens.map((l) => Math.max(0, l - min));
+  const overSum = over.reduce((a, b) => a + b, 0) || 1;
+  return out.map((b, i) => b + Math.floor((over[i] / overSum) * left));
 }
 
 function detectLang(text) {
