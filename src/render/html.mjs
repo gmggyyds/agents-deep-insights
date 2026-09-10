@@ -307,8 +307,12 @@ ${(() => {
   }).join('');
   return `
 ${biH('你在要求 AI 做什么', 'What You Are Asking For')}
-${bi('把你发出的每一条消息按「在要求什么」分三类。一条消息常常同时要求好几件事——「你先去找，给我参考，我再纠正你」三类都算，所以三者相加会超过 100%。这里量的是注意力分布，不是水平高低。',
-     'Every message you sent, classified by what it asks for. One message often asks for several things at once, so the three add up to more than 100%. This describes where your attention went, not how good you are.')}
+${bi('把你发出的每一条消息按「在要求什么」分三类：派活＝Working、想清楚＝Thinking、把关＝Oversight，就是课上讲的那三个词。一条消息常常同时要求好几件事——「你先去找，给我参考，我再纠正你」三类都算，所以三者相加会超过 100%。这里量的是注意力分布，不是水平高低。',
+     'Every message you sent, classified by what it asks for: delegate = Working, deliberate = Thinking, steer = Oversight — the same three words used in the talk. One message often asks for several things at once, so the three add up to more than 100%. This describes where your attention went, not how good you are.')}
+<div class="note posture">${bi('这个百分比按「消息条数」算，不按时间或心力算。一条「帮我想清楚这事该不该做」你可能想了半小时，一条「继续」只要一秒，在这里都算 1 条——所以条数占比天然低估「想清楚」。看到「想清楚 7%」不等于「我只有 7% 的精力在思考」。如果你听过「我九成时间在想」这类说法，那描述的是心力重心，和条数占比不是同一个口径，两个数不能直接比大小。',
+     'This percentage counts messages, not the time or thought behind them. "Help me work out whether this is worth doing" may have cost you half an hour; "continue" costs a second — both count as one message here, so a message-count share structurally understates deliberation. Seeing "deliberate 7%" does not mean only 7% of your thinking went into thinking. If you have heard someone say "I spend ninety percent of my time thinking", that describes where their effort sits — a different measure, not comparable to this one.')}
+<br>${bi('这几个占比不是分数。同一个人在不同月份差别很大：实测同一使用者相隔三个月的三类占比从 6.3/75.8/17.9 变成 7.2/78.6/14.2，主要由那段时间在干什么类型的活决定，不是能力变化。要比就比同一个人、同一个口径、不同时间的两次统计。',
+     'These shares are not a score. The same person can differ a lot month to month: measured three months apart, the three shares moved from 6.3/75.8/17.9 to 7.2/78.6/14.2, driven mainly by what kind of work that period contained. Compare the same person, same measure, at two points in time.')}</div>
 <div class="cards">${share}</div>
 ${X.insufficient ? '<div class="note cross-thin">已打标会话不足，无法做交叉分析。</div>' : `
 ${bi('这三类跟结果有没有关系', 'Does any of this relate to how sessions turn out')}
@@ -317,7 +321,7 @@ ${bi('这三类跟结果有没有关系', 'Does any of this relate to how sessio
 <div class="note posture"><b>怎么读这张表：</b>它是<b>相关性，不是因果</b>。简单任务天然既不需要「想清楚」又天然容易成功，这一条就足以把关系拉成反向。
 成功率的分母只用能判定的会话（结果说不清的单列，不塞进任何一边）。
 任一组少于 5 个会话时直接标「样本不足」，不给百分比——小样本的差异没有意义。
-<br><b>这几个占比不是分数。</b>同一个人在不同月份差别很大：实测同一使用者相隔三个月的三类占比从 6.3/75.8/17.9 变成 7.2/78.6/14.2，主要由那段时间在干什么类型的活决定，不是能力变化。</div>`}
+</div>`}
 `;
 })()}
 

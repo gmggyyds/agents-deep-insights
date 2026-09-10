@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { aggregateFacets, crossCollabOutcome } from '../src/pipeline/aggregate.mjs';
 import { facetSchema, COLLAB_MODE, COUNT_KEYS_OF } from '../src/schema/facet.mjs';
 import { normalizeFacet } from '../src/schema/normalize.mjs';
+import { readFile } from 'node:fs/promises';
 
 const F = (over = {}) => ({
   outcome: 'fully_achieved', session_type: 'single_task',
@@ -125,4 +126,15 @@ test('🔴 契约任何改动都必须改变指纹（否则旧缓存会被复用
   delete mutated.properties.collaboration_mode_counts;
   mutated.required = mutated.required.filter((k) => k !== 'collaboration_mode_counts');
   assert.notEqual(fp(base), fp(mutated), '加/删字段必须让指纹变化');
+});
+
+// —— 防回归：bi() 的参数会走 esc()，塞 HTML 标签会被转义成字面文字印在报告上 ——
+// 2026-09-10：补协作模式概念说明时踩过，三处 <b> 会原样显示给用户。
+test('bi() 调用的文案参数里不得出现 HTML 标签', async () => {
+  const src = await readFile(new URL('../src/render/html.mjs', import.meta.url), 'utf8');
+  // 匹配 bi('...' 或 biH('...' 的第一个字符串参数里带尖括号标签的情况
+  const offenders = [...src.matchAll(/\bbiH?\(\s*'((?:[^'\\]|\\.)*)'/g)]
+    .map((m) => m[1])
+    .filter((s) => /<\/?[a-zA-Z][^>]*>/.test(s));
+  assert.deepEqual(offenders, [], `bi() 文案里带 HTML 标签会被 esc() 转义成字面文字：${offenders.join(' | ')}`);
 });
