@@ -10,7 +10,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { facetSchema, OUTCOME, SESSION_TYPE, GOAL_CATEGORIES, FRICTION, ATTRIBUTION,
-         PRIMARY_SUCCESS, HELPFULNESS, REACTION } from '../schema/facet.mjs';
+         PRIMARY_SUCCESS, HELPFULNESS, REACTION, COLLAB_MODE } from '../schema/facet.mjs';
 import { parseLoose, normalizeFacet } from '../schema/normalize.mjs';
 import { splitBudget, clipHeadTail } from '../budget.mjs';
 import { redact } from '../redact.mjs';
@@ -44,7 +44,24 @@ Rules:
   Count what the transcript shows; leave the interpretation to the reader.
 - friction_detail: name the SPECIFIC defects, not categories. "introduced a wrong upper
   bound on Net Proceeds and a cross-axis division in the ratio column" is useful;
-  "had some bugs" is not. This is the raw material for the report's diagnosis section.`;
+  "had some bugs" is not. This is the raw material for the report's diagnosis section.
+- collaboration_mode_counts: classify what EACH user message ASKS FOR. Three modes:
+    delegate   = the user already knows what they want; they are asking you to produce or execute
+                 ("write the script", "fix this", "deploy it", "pull that data")
+    deliberate = the user has NOT settled the judgement yet and is working it out with you
+                 ("which approach is better?", "why did they fail?", "what am I missing?",
+                  "is this even worth doing?", "push back on me")
+    steer      = the user is gating, accepting, rejecting, or setting a standing rule
+                 ("that's wrong, redo it", "from now on always X", "did you actually test it?",
+                  "not done until you verify")
+  🔴 COUNT MULTIPLE MODES PER MESSAGE. One message often asks for several at once —
+  "go find it, show me first, then I'll correct you" is delegate + deliberate + steer, and
+  must add 1 to all three. Picking only the dominant mode systematically under-counts
+  deliberate (measured: 8.2% single-label vs 20.5% multi-label on 400 real messages).
+  Count every mode the message actually asks for; a message asking for exactly one gets one.
+  🔴 This measures WHAT WAS ASKED, not how skilled or "AI-native" the user is. Do not
+  reward or penalise any mode. A session that is 100% delegate is not worse than a
+  balanced one — it may simply be an execution-heavy day.`;
 
 function buildPrompt(transcript, meta, { withEnums }) {
   const stats = JSON.stringify({
@@ -69,11 +86,12 @@ function buildPrompt(transcript, meta, { withEnums }) {
 - primary_success: ${PRIMARY_SUCCESS.join(' | ')}
 - claude_helpfulness: ${HELPFULNESS.join(' | ')}
 - user_reaction_counts keys: ${REACTION.join(', ')}
+- collaboration_mode_counts keys: ${COLLAB_MODE.join(', ')}  (multi-label: one message may add to several)
 
 Return an object with keys: outcome, session_type, goal_categories, friction_counts,
 friction_attribution, friction_detail (string), user_instructions (array of strings),
 brief_summary (string), underlying_goal (string), primary_success, claude_helpfulness,
-user_reaction_counts.
+user_reaction_counts, collaboration_mode_counts.
 RESPOND WITH ONLY A VALID JSON OBJECT.\n`;
   } else {
     p += '\nReturn the facets as JSON matching the provided output schema.\n';

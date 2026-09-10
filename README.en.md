@@ -114,12 +114,47 @@ Analyzed sessions are cached by content fingerprint, so re-running does not spen
 | **Friction, split three ways** | **Yours to fix** / model limitations / environment |
 | Paste-ready rules | Derived only from "yours to fix" frictions repeating across 3+ sessions |
 | What to try next | Each with a prompt you can paste straight into your agent |
+| **What you're asking the AI to do** | Every message counted by what it asks for (delegate / deliberate / steer), cross-tabbed against outcomes and friction |
 | Raw statistics | Collapsed at the bottom, so you can check the claims above |
 
 **The three-way split is the point.** The official `/insights` reports all 12 friction categories
 as one pile, leaving you unable to tell which ones were yours. Split apart, the report can say
 "here is what you could do differently, concretely" — the other two buckets will not disappear by
 asking better questions, so the first one is where the leverage is.
+
+**The collaboration-mode section is a description, not a score.** It counts what your messages ask
+for — you already know what you want and are handing off work (delegate), you have not settled the
+judgement yet and are working it out together (deliberate), or you are reviewing output and setting
+rules (steer). The three add up to more than 100% because a single message often asks for several
+things at once, so **multi-label counting is mandatory**: measured on real data, forcing a single
+dominant label understates "deliberate" by 2.5× (8.2% vs 20.5%).
+
+**If you first heard these three words in a talk or course**, they are the same thing as "AI Thinking /
+AI Working / Oversight" — the report just uses plainer words:
+
+| In the report | In the talk | Test |
+|---|---|---|
+| delegate | **Working** | You already know what you want; you are having it produced or executed |
+| deliberate | **Thinking** | You have not settled it yet; you are converging on a judgement together |
+| steer | **Oversight** | Reviewing output or future behaviour, setting rules, recording why something was rejected |
+
+**The easiest thing to misread: this percentage counts messages, not the time or thought behind them.**
+"Help me work out whether this model is worth doing" may have cost you half an hour; "continue" costs
+one second — both count as exactly one message here. So **a message-count share structurally understates
+how much deliberation actually went in**: seeing "deliberate 7%" does not mean only 7% of your thinking
+went into thinking.
+
+If you have heard someone say "I now spend ninety percent of my time thinking", that describes **where
+their effort sits**, which is a different measure from **share of messages**. **The two numbers are not
+comparable.** To see whether you have actually changed, compare the same person, same measure, at two
+points in time — not your message share against someone else's description of their effort.
+
+Equally important is what it **cannot** do: a higher or lower share does not mean better or worse.
+Measured on the same person three months apart, the three shares moved from 6.3/75.8/17.9 to
+7.2/78.6/14.2, driven mainly by what kind of work that period happened to contain. The cross-tab
+against outcomes is **correlation, not causation** (easy tasks both need less deliberation and succeed
+more readily — that alone can invert the relationship), and any group with fewer than 5 sessions is
+reported as "insufficient sample" with no percentage.
 
 All numbers are computed by deterministic code. The model only turns them into prose and cites
 evidence; it never counts.
@@ -145,6 +180,8 @@ Stated up front rather than buried:
 - Whether aggregation averages that noise out across many sessions is **not yet properly verified**.
 - On the Claude Code side this tool currently reads only the official `session-meta` (metadata, no
   conversation content), so **deep analysis supports Codex sessions only**. `stats` supports both.
+- The "what you're asking the AI to do" section depends on conversation content, so it **also only
+  works for Codex sessions**; there is no transcript on the Claude Code side and the section is omitted.
 - Only tested on macOS + Node 25 + codex-cli 0.131.0 + gpt-5.5. On any other setup, please run
   `adi doctor` and paste the output into an issue — that is exactly the feedback this project needs most.
 
