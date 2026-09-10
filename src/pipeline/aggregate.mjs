@@ -92,14 +92,27 @@ function forkFamilyOf(metas) {
 const GOOD_OUTCOMES = new Set(['fully_achieved', 'mostly_achieved']);
 const BAD_OUTCOMES = new Set(['not_achieved', 'partially_achieved']);
 
-/** 一个会话有没有被打过协作模式的标（旧缓存 facet 没有这个字段，必须排除而不是当成 0）。 */
+/**
+ * 一个会话有没有被真正打过协作模式的标。
+ *
+ * 🔴 不能用「字段存在 / 是数字」判断：`normalizeFacet` 对 COUNT_KEYS_OF 里的字段
+ * 无条件 dense-fill，源里根本没有这个字段时也会产出 {delegate:0,deliberate:0,steer:0}，
+ * 于是「没打标」被判成「已打标」，对照组被未打标会话填满，直接造出
+ * 「有 deliberate 成功率 0% vs 无 100%」这种假结论。
+ * 而这条路径是可达的：该字段是 required 列表最后一个 key，模型输出截断时第一个丢，
+ * 而 parseLoose 专门做截断补全，补完就是一份"看起来完整"的全 0 facet。
+ *
+ * 改用「三类之和 > 0」：采样进来的会话都有 >=2 条用户消息，三类全 0 在语义上
+ * 不可能是真实标注结果，只可能是没打上。
+ */
 function hasModeLabel(f) {
   const c = f?.collaboration_mode_counts;
-  return !!c && COLLAB_MODE.some((k) => typeof c[k] === 'number');
+  if (!c) return false;
+  return COLLAB_MODE.reduce((sum, k) => sum + (Number(c[k]) || 0), 0) > 0;
 }
 
 function groupProfile(list) {
-  let good = 0, bad = 0, unclear = 0, friction = 0, userActionable = 0, frictionTotal = 0;
+  let good = 0, bad = 0, unclear = 0, friction = 0, userActionable = 0;
   for (const f of list) {
     if (GOOD_OUTCOMES.has(f?.outcome)) good++;
     else if (BAD_OUTCOMES.has(f?.outcome)) bad++;
@@ -107,9 +120,11 @@ function groupProfile(list) {
     const counts = f?.friction_counts || {};
     const attrs = f?.friction_attribution || {};
     for (const k of FRICTION) {
-      const n = counts[k] || 0;
+      // Number() 不能省：这是 export 出去的公共函数，喂进字符串 "3" 时
+      // `friction += n` 会走字符串拼接，算出天文数字而不报错。
+      const n = Number(counts[k]) || 0;
       if (!n) continue;
-      friction += n; frictionTotal += n;
+      friction += n;
       if (attrs[k] === 'user_actionable') userActionable += n;
     }
   }
@@ -121,7 +136,7 @@ function groupProfile(list) {
     successRate: decidable ? good / decidable : null,
     decidable,
     frictionPerSession: list.length ? friction / list.length : 0,
-    userActionableShare: frictionTotal ? userActionable / frictionTotal : null,
+    userActionableShare: friction ? userActionable / friction : null,
   };
 }
 
@@ -141,16 +156,34 @@ export function crossCollabOutcome(facets) {
   const labeled = facets.filter(hasModeLabel);
   const out = { labeledSessions: labeled.length, byMode: {} };
   if (labeled.length < MIN_GROUP * 2) { out.insufficient = true; return out; }
+  // 🔴 分组不能用「有 / 无」。多标签稠密计数下，主导模式几乎每个会话都 >=1，
+  // 对照组恒空——delegate 那一行会永远停在「样本不足（有 N / 无 0）」，三行表里
+  // 只有一行能出数。改为按**该模式在会话内的占比**取中位数分割：占比高的一半
+  // vs 低的一半，每个模式都能分出两组，比较的也从「有没有」变成「多还是少」。
   for (const mode of COLLAB_MODE) {
-    const withMode = labeled.filter((f) => (f.collaboration_mode_counts?.[mode] || 0) > 0);
-    const without = labeled.filter((f) => !(f.collaboration_mode_counts?.[mode] > 0));
-    if (withMode.length < MIN_GROUP || without.length < MIN_GROUP) {
-      out.byMode[mode] = { insufficient: true, with: withMode.length, without: without.length };
+    const withShare = labeled.map((f) => {
+      const c = f.collaboration_mode_counts || {};
+      const tot = COLLAB_MODE.reduce((s, k) => s + (Number(c[k]) || 0), 0);
+      return { f, share: tot ? (Number(c[mode]) || 0) / tot : 0 };
+    }).sort((x, y) => x.share - y.share);
+    // 不能直接用「> 中位数」切：真实数据里占比高度重复，中位数两侧常有一侧为空。
+    // 改为找一个**两侧都够 MIN_GROUP、且分割点两边取值确实不同**的切点；
+    // 找不到就说明这个模式在所有会话里占比几乎一样，本来就没有可比的两组。
+    let cut = -1;
+    for (let i = MIN_GROUP; i <= withShare.length - MIN_GROUP; i++) {
+      if (withShare[i].share > withShare[i - 1].share) { cut = i; break; }
+    }
+    if (cut < 0) {
+      out.byMode[mode] = { insufficient: true, reason: 'no_variation', n: withShare.length };
       continue;
     }
-    const a = groupProfile(withMode), b = groupProfile(without);
+    const low = withShare.slice(0, cut).map((x) => x.f);
+    const high = withShare.slice(cut).map((x) => x.f);
+    const median = withShare[cut].share;
+    const a = groupProfile(high), b = groupProfile(low);
     out.byMode[mode] = {
-      with: a, without: b,
+      median,
+      high: a, low: b,
       successRateDelta: (a.successRate != null && b.successRate != null)
         ? a.successRate - b.successRate : null,
       frictionDelta: a.frictionPerSession - b.frictionPerSession,
@@ -237,7 +270,11 @@ export function aggregateFacets(facets, { noiseFloor = NOISE_FLOOR, metas = null
       return (by.user_actionable || 0) / total > 0.5;   // 过半会话判定为用户可改
     }).map((f) => ({ ...f, attribution: attrByCategory[f.key] || {} })),
     attributionByCategory: attrByCategory,
-    collaborationModes: rank(collab),
+    // 稠密三值分类不能套 friction/goal 那套噪声门槛（默认 2）：
+    // 一个真实出现过 1 次的模式会被整个抹掉，同时把分母也改了。
+    collaborationModes: Object.entries(collab.total)
+      .sort((x, y) => y[1] - x[1])
+      .map(([k, v]) => ({ key: k, count: v, sessions: collab.sessions[k] })),
     collaborationCross: crossCollabOutcome(facets),
     repeatedInstructions: Object.entries(instructions)
       .filter(([, v]) => v >= 2).sort((a, b) => b[1] - a[1])

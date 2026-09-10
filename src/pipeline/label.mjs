@@ -15,7 +15,7 @@ import { parseLoose, normalizeFacet } from '../schema/normalize.mjs';
 import { splitBudget, clipHeadTail } from '../budget.mjs';
 import { redact } from '../redact.mjs';
 
-const TASK = `Analyze this AI coding-session transcript and extract structured facets.
+export const TASK = `Analyze this AI coding-session transcript and extract structured facets.
 
 Rules:
 - Count only what the USER explicitly asked for. Do not infer goals from tool activity alone.

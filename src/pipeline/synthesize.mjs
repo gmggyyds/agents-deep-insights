@@ -131,12 +131,17 @@ NOTE: these are observed ACTIONS, not satisfaction. A correction is normal itera
 collaboration; do not report it as the user being unhappy. Never state or imply a
 satisfaction rate — the data does not support one.
 Primary successes: ${JSON.stringify(agg.successes || {})}
-What the user asks for (multi-label; one message can count toward several, so these sum past 100%):
-${JSON.stringify(Object.fromEntries((agg.collaborationModes || []).map((m) => [m.key, m.count])))}
-Mode x outcome cross-tab: ${JSON.stringify(agg.collaborationCross?.byMode || {})}
+What the user asks for — LABEL counts, multi-label (one message can be counted under
+several modes). These are raw label counts, so their SHARES sum to 100%; the number of
+sessions each mode appeared in is given separately:
+${JSON.stringify(Object.fromEntries((agg.collaborationModes || []).map((m) => [m.key, { labels: m.count, sessions: m.sessions }])))}
+Mode x outcome cross-tab (sessions split by how LARGE A SHARE that mode takes in each
+session — the higher-share half vs the lower-share half, not "has it / doesn't"):
+${JSON.stringify(agg.collaborationCross?.byMode || {})}
 NOTE on the cross-tab: it is CORRELATION, not causation, and confounded by task difficulty
 (easy tasks need no deliberation AND succeed anyway). Groups under 5 sessions are marked
-insufficient — never quote a percentage from those. Do NOT turn these shares into a score,
+insufficient — never quote a percentage from those, and never say a mode is "absent"
+from the lower-share group (it is lower, not absent). Do NOT turn these shares into a score,
 a maturity level, or advice to "deliberate more": the same person's shares swing with what
 kind of work the month contained. You may point out a gap worth the reader's attention
 (e.g. most sessions start executing with no deliberation anywhere in them) as an
