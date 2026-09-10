@@ -13,6 +13,7 @@ import { classifyOutcome } from '../src/providers/codex.mjs';
 const FACET_SRC = _rf(new URL('../src/schema/facet.mjs', import.meta.url), 'utf8');
 const LABEL_SRC = _rf(new URL('../src/pipeline/label.mjs', import.meta.url), 'utf8');
 const mkMeta = () => ({ toolFailures: 0, toolOutcomesKnown: 0, toolStillRunning: 0, toolOutcomeUnknown: 0 });
+import { version } from '../src/version.mjs';
 import { renderHtml } from '../src/render/html.mjs';
 import { SYNTHESIS_SCHEMA } from '../src/pipeline/synthesize.mjs';
 import { splitBudget } from '../src/budget.mjs';
@@ -364,4 +365,17 @@ test('样本过少时必须显著警示，不能把 n=1 的描述当成模式', 
   assert.ok(/样本量不足/.test(small), '警示要说清是样本量问题');
   const big = renderHtml({ ...renderArgs(null), facetAgg: { ...FAKE_AGG, n: 20 } });
   assert.doesNotMatch(big, el, '样本充足时不该出警示');
+});
+
+test('版本号必须与 package.json 一致，且不得在代码里硬编码', () => {
+  const pkg = JSON.parse(_rf(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(version(), pkg.version, 'version() 应等于 package.json');
+  // --help 与报告里的版本号历史上分别停在 v0.3.1 / v0.5.1，跟真实发布版本对不上；
+  // 同事按 --help 报 bug 会指向错的版本。这里禁止代码里再出现字面版本号。
+  for (const f of ['cli.mjs', 'doctor.mjs']) {
+    const src = _rf(new URL(`../src/${f}`, import.meta.url), 'utf8');
+    const code = src.split('\n').filter((l) => !/^\s*[*/]/.test(l)).join('\n');
+    const hard = code.match(/(?<![\w.])v?\d+\.\d+\.\d+(?![\w.])/g) || [];
+    assert.deepEqual(hard, [], `${f} 里仍有硬编码版本号: ${hard.join(', ')}`);
+  }
 });

@@ -6,6 +6,7 @@
  *
  * 硬约束：输出只含环境与计数，绝不含任何会话内容 —— 它要被贴进公开 issue。
  */
+import { version } from './version.mjs';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { platform, release, homedir, tmpdir } from 'node:os';
@@ -27,7 +28,7 @@ function tryExec(cmd, args) {
 }
 
 export function collect() {
-  const d = { tool: 'agents-deep-insights', version: '0.5.1', ts: new Date().toISOString() };
+  const d = { tool: 'agents-deep-insights', version: version(), ts: new Date().toISOString() };
   d.env = { os: `${platform()} ${release()}`, node: process.version, arch: process.arch };
 
   const cv = tryExec('codex', ['--version']);

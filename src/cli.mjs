@@ -2,6 +2,7 @@
 /** agents-deep-insights CLI —— 命令分层见 docs/DESIGN.md §9.3 */
 import * as fs from 'node:fs';
 globalThis.__adi_fs = fs;
+import { version } from './version.mjs';
 import * as codex from './providers/codex.mjs';
 import * as cc from './providers/claude-code.mjs';
 import { aggregateMetas } from './pipeline/aggregate.mjs';
@@ -13,6 +14,7 @@ import { labelWithCodex, compactTranscript } from './pipeline/label.mjs';
 import { renderHtml } from './render/html.mjs';
 import { synthesize, translateNarrative } from './pipeline/synthesize.mjs';
 import { createHash } from 'node:crypto';
+import { facetSchema } from './schema/facet.mjs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -20,8 +22,16 @@ import { execFileSync } from 'node:child_process';
 const CACHE = join(process.env.ADI_CACHE || join(homedir(), '.agents-deep-insights'), 'facets');
 // 指纹必须包含转录内容本身。此前只用长度，内容变了但长度不变会命中旧缓存、
 // 复用过时结果（外部测试发现："Need AAA" -> "Need BBB" 指纹不变）。
+//
+// 契约版本从 facetSchema() 自身派生，不再手写 `v5|` 这类常量。
+// 手写版本号是「靠人记得改」的机制：2026-09-10 给 facet 加 collaboration_mode_counts
+// 时就漏了 bump——6 个会话全部命中旧缓存，新字段静默为空，报告里整段消失，
+// 而单元测试全绿（测的是聚合逻辑，喂的是手写 facet，碰不到缓存这条路）。
+// 现在改任何一处 facet 契约，指纹自动变化，旧缓存自动失效。
+export const SCHEMA_FINGERPRINT = createHash('sha256')
+  .update(JSON.stringify(facetSchema())).digest('hex').slice(0, 8);
 const fingerprint = (m) => createHash('sha256')
-  .update(`v5|${m.provider}|${m.id}|${m.userMessages}|${m.toolCalls}|`)   // v5: 失败判定改退出码·子代理分离·满意度改可观察反应
+  .update(`${SCHEMA_FINGERPRINT}|${m.provider}|${m.id}|${m.userMessages}|${m.toolCalls}|`)
   .update(compactTranscript(m.transcript || []))
   .digest('hex').slice(0, 16);
 
@@ -49,7 +59,7 @@ function loadMetas(days, only) {
 
 function help() {
   console.log(`
-  agents-deep-insights (adi) v0.3.1
+  agents-deep-insights (adi) v${version()}
   把本地 AI 编码会话变成可行动的摩擦报告。
   stats / doctor 完全本地不联网；run 会把脱敏后的会话片段发给你自己配置的模型。
 
@@ -197,7 +207,7 @@ async function main() {
     const spanDays = days_.length ? Math.round((Math.max(...days_) - Math.min(...days_)) / 864e5) : 0;
     const html = renderHtml({ metaAgg, facetAgg, narrative, narrativeEn, meta: {
       generatedAt: new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',  // 标时区，否则本地时间会被误读
-      providers: used, windowDays: days, spanDays, version: '0.5.1', repairsCount } });
+      providers: used, windowDays: days, spanDays, version: version(), repairsCount } });
     const out = String(flag('out', join(process.cwd(), 'adi-report.html')));
     fs.writeFileSync(out, html);
     console.log(`  报告已生成: ${out}`);
