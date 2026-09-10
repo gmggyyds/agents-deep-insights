@@ -5,6 +5,8 @@
  */
 import { test } from 'node:test';
 import { compactTranscript } from '../src/pipeline/label.mjs';
+import { renderHtml } from '../src/render/html.mjs';
+import { SYNTHESIS_SCHEMA } from '../src/pipeline/synthesize.mjs';
 import { splitBudget } from '../src/budget.mjs';
 import assert from 'node:assert/strict';
 import { redact, auditRedaction } from '../src/redact.mjs';
@@ -158,4 +160,103 @@ test('splitBudget：短条目不得占用它用不完的额度', () => {
   assert.equal(b[1], 5, '短条目应当全额保留，不多拿');
   assert.ok(b[0] > 9000, `长条目只拿到 ${b[0]}，额度被浪费了`);
   assert.ok(b.reduce((a, c) => a + c, 0) <= 10000, '总额超预算');
+});
+
+/* ── v0.4.0：七段结构与双语 ──────────────────────────────────────── */
+
+const FAKE_NARR = {
+  headline: '中文标题句', 
+  themes: [{ name: '主题一', session_estimate: 3, detail: '主题细节中文' }],
+  how_you_work: { summary: '姿态概述', evidence: '证据中文', implication: '含义中文' },
+  impressive: { summary: '概述中文', items: [{ title: '标题中文', detail: '细节中文' }] },
+  friction_narrative: { summary: '摘要中文', yours_to_fix: '你能改的中文', model_limits: '能力所限中文', environment: '环境中文' },
+  rules: [{ heading: '规则主题', rule: '中文祈使规则', why: '依据中文', evidence_quote: '你有测试吗', evidence_count: 4 }],
+  next_steps: [{ title: '下一步中文', why_for_you: '原因中文', copyable_prompt: 'Paste me' }],
+  horizon: { summary: '前瞻中文', items: [{ title: '前瞻标题', vision: '愿景中文' }] },
+};
+const FAKE_EN = {
+  headline: 'English headline',
+  themes: [{ name: 'Theme one', session_estimate: 3, detail: 'Theme detail' }],
+  how_you_work: { summary: 'Posture', evidence: 'Evidence', implication: 'Implication' },
+  impressive: { summary: 'Summary', items: [{ title: 'Title', detail: 'Detail' }] },
+  friction_narrative: { summary: 'Summary', yours_to_fix: 'Yours', model_limits: 'Limits', environment: 'Env' },
+  rules: [{ heading: 'Rule heading', rule: 'English imperative rule', why: 'Why', evidence_quote: '你有测试吗', evidence_count: 4 }],
+  next_steps: [{ title: 'Next', why_for_you: 'Why', copyable_prompt: 'Paste me' }],
+  horizon: { summary: 'Horizon', items: [{ title: 'T', vision: 'V' }] },
+};
+const FAKE_AGG = {
+  n: 4, friction: [{ key: 'tool_failed', count: 9, sessions: 4 }], goals: [{ key: 'fix_bug', count: 5, sessions: 3 }],
+  attribution: { user_actionable: 4, agent_capability: 2, environmental: 3, unknown: 1 },
+  outcomes: { mostly_achieved: 4 }, sessionTypes: { multi_task: 4 },
+  ruleCandidates: [{ key: 'tool_failed', count: 9, sessions: 4 }],
+  // 夹具必须让每个条件分支都渲染，否则测不到的分支就是泄漏的藏身处——
+  // 「你反复说过的话」那段第一版就因为夹具是空数组而漏掉了。
+  repeatedInstructions: [{ text: '先测试再说完成', n: 3 }],
+};
+const FAKE_META_AGG = { sessions: 4, failureRate: 0.1, gitCommits: 2, approvalPolicies: { never: 4 },
+  sandboxPolicies: {}, originators: {}, planSessions: 2 };
+const renderArgs = (en) => ({ metaAgg: FAKE_META_AGG, facetAgg: FAKE_AGG, narrative: FAKE_NARR,
+  narrativeEn: en, meta: { generatedAt: '2026-01-01 00:00 UTC', providers: ['codex'],
+  windowDays: 0, spanDays: 7, version: 'test', repairsCount: 0 } });
+
+test('报告必须有官方那七段，缺一段就是结构性缺失', () => {
+  const h = renderHtml(renderArgs(null));
+  for (const sec of ['你主要在做什么', '你是怎么用它的', '你做得漂亮的地方', '哪里出了问题',
+                     'AGENTS.md 的规则', '下一步可以试试', '再往前一步']) {
+    assert.ok(h.includes(sec), `缺少段落: ${sec}`);
+  }
+});
+
+test('双语：切到 English 时不得残留未标记的中文块', () => {
+  const h = renderHtml(renderArgs(FAKE_EN));
+  // 逐个块级元素检查：含中文却没有 zh 标记的，在 lang-en 下会和英文同时显示
+  const leaks = [];
+  for (const m of h.matchAll(/<(code|p|div|li|h4|h2|span)([^>]*)>([^<]{4,})<\/\1>/g)) {
+    const [, tag, attrs, txt] = m;
+    if (!/[一-鿿]/.test(txt)) continue;
+    const cls = (attrs.match(/class="([^"]*)"/) || [, ''])[1].split(/\s+/);
+    if (cls.includes('zh')) continue;
+    if (cls.includes('quote')) continue;              // 证据句刻意保留原话
+    if (cls.includes('en')) continue;                 // 英文块里引用的原话，同上
+    leaks.push(`<${tag} class="${cls.join(' ')}">${txt.trim().slice(0, 40)}`);
+  }
+  assert.deepEqual(leaks, [], `英文模式下会残留 ${leaks.length} 处中文:\n` + leaks.join('\n'));
+});
+
+test('双语：中文规则的 code 必须带 zh 标记（否则英文模式下中英规则同时显示）', () => {
+  const h = renderHtml(renderArgs(FAKE_EN));
+  const codes = [...h.matchAll(/<code([^>]*)>([^<]*)<\/code>/g)]
+    .filter((m) => /[一-鿿]/.test(m[2]));
+  assert.ok(codes.length > 0, '夹具里应当有中文规则');
+  for (const c of codes) assert.match(c[1], /\bzh\b/, `中文 code 缺 zh 标记: ${c[2].slice(0, 30)}`);
+});
+
+test('没有英文叙事时不出语言开关，也不出任何 en 节点', () => {
+  const h = renderHtml(renderArgs(null));
+  // 注意查的是开关元素本身，不是 'langbar' 字符串——CSS 里恒有 .langbar 规则，
+  // 第一版测试就是匹配到了样式表，报了个假的失败。
+  assert.ok(!/<div class="langbar"/.test(h), '单语报告不该有语言开关');
+  assert.ok(!/class="[^"]*\ben\b/.test(h), '单语报告不该有 en 节点');
+});
+
+test('规则块必须带证据句与勾选框——这是规则可信的依据', () => {
+  const h = renderHtml(renderArgs(null));
+  assert.ok(h.includes('你有测试吗'), '规则缺少证据引用');
+  assert.ok(h.includes('class="rk"'), '规则缺少勾选框');
+  assert.ok(h.includes('copyChecked'), '缺少批量复制');
+});
+
+test('合成 schema 七段齐全且每层 required 列全（strict 模式硬要求）', () => {
+  const need = ['headline', 'themes', 'how_you_work', 'impressive',
+                'friction_narrative', 'rules', 'next_steps', 'horizon'];
+  for (const k of need) assert.ok(SYNTHESIS_SCHEMA.properties[k], `schema 缺 ${k}`);
+  const walk = (o, path) => {
+    if (o.type === 'object' && o.properties) {
+      const miss = Object.keys(o.properties).filter((k) => !(o.required || []).includes(k));
+      assert.deepEqual(miss, [], `${path} 的 required 漏了 ${miss}`);
+      for (const [k, v] of Object.entries(o.properties)) walk(v, `${path}.${k}`);
+    }
+    if (o.type === 'array' && o.items) walk(o.items, `${path}[]`);
+  };
+  walk(SYNTHESIS_SCHEMA, 'root');
 });

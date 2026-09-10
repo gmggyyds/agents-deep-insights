@@ -42,6 +42,25 @@ export const FRICTION = [
  * `unknown` 是必须的：原因不明的工具失败应当单列，不能默认塞进 environmental
  * 充数——那会让归因比例看起来精确，实际是把「不知道」伪装成「不怪你」。
  */
+/**
+ * 主要成功类型。取自官方 /insights 本机 54 条产物的实测取值全集
+ * （good_debugging 20 / multi_file_changes 17 / fast_accurate_search 7 /
+ *  proactive_help 7 / good_explanations 2 / none 1），按 Codex 场景补两项。
+ *
+ * 用途：驱动报告「你做得漂亮的地方」一段。没有这一维时那段只能写空话——
+ * 这是 v0.3 报告比官方薄 21 倍的结构性原因之一。
+ */
+export const PRIMARY_SUCCESS = [
+  'good_debugging', 'multi_file_changes', 'fast_accurate_search', 'proactive_help',
+  'good_explanations', 'long_autonomous_run', 'caught_own_mistake', 'none',
+];
+
+/** 助手这次到底有多大用。官方实测取值：essential / very_helpful / moderately_helpful / unhelpful。 */
+export const HELPFULNESS = ['essential', 'very_helpful', 'moderately_helpful', 'slightly_helpful', 'unhelpful'];
+
+/** 用户满意度。官方是开放词表（漂出过 happy / neutral），这里闭合以保证可比。 */
+export const SATISFACTION = ['satisfied', 'likely_satisfied', 'neutral', 'dissatisfied'];
+
 export const ATTRIBUTION = ['user_actionable', 'agent_capability', 'environmental', 'unknown'];
 
 /** 每类摩擦的归因取值；none 表示该类别本次未发生。 */
@@ -102,10 +121,18 @@ export function facetSchema() {
       friction_detail: { type: 'string' },
       user_instructions: { type: 'array', items: { type: 'string' } },
       brief_summary: { type: 'string' },
+      // ↓ 叙事层。枚举负责「可比的计数」，这几个自由文本负责「具体到能写进报告」。
+      // 官方靠开放词表拿到具体性，代价是 171 个 goal 类别互相漂移、计数不可比；
+      // 分成两层就不用二选一。
+      underlying_goal: { type: 'string' },
+      primary_success: { type: 'string', enum: PRIMARY_SUCCESS },
+      claude_helpfulness: { type: 'string', enum: HELPFULNESS },
+      user_satisfaction_counts: denseCounts(SATISFACTION),
     },
     required: [
       'outcome', 'session_type', 'goal_categories', 'friction_counts',
       'friction_attribution', 'friction_detail', 'user_instructions', 'brief_summary',
+      'underlying_goal', 'primary_success', 'claude_helpfulness', 'user_satisfaction_counts',
     ],
   };
 }
@@ -113,9 +140,12 @@ export function facetSchema() {
 export const ENUM_OF = {
   outcome: OUTCOME,
   session_type: SESSION_TYPE,
+  primary_success: PRIMARY_SUCCESS,
+  claude_helpfulness: HELPFULNESS,
 };
 
 export const COUNT_KEYS_OF = {
   goal_categories: GOAL_CATEGORIES,
   friction_counts: FRICTION,
+  user_satisfaction_counts: SATISFACTION,
 };

@@ -157,6 +157,8 @@ export function normalizeFacet(input) {
     repairs.coerced_types.push(`friction_detail: ${Array.isArray(detailRaw) ? 'array' : typeof detailRaw} -> string`);
   }
   out.brief_summary = coerceText(input?.brief_summary);
+  // underlying_goal 与 brief_summary 同样会漂成 list/dict，走同一条兜底
+  out.underlying_goal = coerceText(input?.underlying_goal);
 
   const ui = input?.user_instructions;
   out.user_instructions = Array.isArray(ui) ? ui.map(coerceText).filter(Boolean)

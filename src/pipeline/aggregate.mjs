@@ -8,6 +8,10 @@ export function aggregateMetas(metas) {
     toolFailures: 0, interruptions: 0, gitCommits: 0, gitPushes: 0,
     totalMinutes: 0, toolCounts: {}, projects: {}, hours: Array(24).fill(0),
     gaps: [], days: new Set(), durations: [],
+    // 姿态分布（Codex 独有，官方 /insights 无等价信号）：
+    // 用户显式给出的授权与沙箱策略，是「你把它当自主执行器还是结对编程」最硬的证据。
+    approvalPolicies: {}, sandboxPolicies: {}, originators: {}, sources: {}, models: {},
+    planSessions: 0,
   };
   for (const m of metas) {
     a.userMessages += m.userMessages || 0;
@@ -25,6 +29,10 @@ export function aggregateMetas(metas) {
     if (m.cwd) { const p = m.cwd.split(/[\\/]/).filter(Boolean).pop() || m.cwd; a.projects[p] = (a.projects[p] || 0) + 1; }
     if (m.startedAt) { a.hours[new Date(m.startedAt).getHours()]++; a.days.add(new Date(m.startedAt).toISOString().slice(0, 10)); }
     for (const g of m.responseGaps || []) if (g > 0) a.gaps.push(g);
+    const bump = (o, v) => { if (v) o[v] = (o[v] || 0) + 1; };
+    bump(a.approvalPolicies, m.approvalPolicy); bump(a.sandboxPolicies, m.sandboxPolicy);
+    bump(a.originators, m.originator); bump(a.sources, m.source); bump(a.models, m.model);
+    if ((m.planSteps || []).length) a.planSessions++;
   }
   a.daysActive = a.days.size; delete a.days;
   // 注意：totalMinutes 是「会话跨度之和」，含挂机时间且多窗口并发时会重复累加，
@@ -118,6 +126,13 @@ export function aggregateFacets(facets, { noiseFloor = NOISE_FLOOR, metas = null
     friction: rank(friction), goals: rank(goals),
     attribution,
     outcomes: counts('outcome'), sessionTypes: counts('session_type'),
+    helpfulness: counts('claude_helpfulness'), successes: counts('primary_success'),
+    satisfaction: facets.reduce((acc, f) => {
+      for (const [k, v] of Object.entries(f?.user_satisfaction_counts || {})) {
+        if (typeof v === 'number' && v > 0) acc[k] = (acc[k] || 0) + v;
+      }
+      return acc;
+    }, {}),
     // 立规候选：两个条件同时满足才提
     //   ① 重复 >= 3 个会话（对齐「同坑第 N 次才升格」的做法）
     //   ② **这一类摩擦本身**在多数会话里被归为用户可改

@@ -9,7 +9,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { facetSchema, OUTCOME, SESSION_TYPE, GOAL_CATEGORIES, FRICTION, ATTRIBUTION } from '../schema/facet.mjs';
+import { facetSchema, OUTCOME, SESSION_TYPE, GOAL_CATEGORIES, FRICTION, ATTRIBUTION,
+         PRIMARY_SUCCESS, HELPFULNESS, SATISFACTION } from '../schema/facet.mjs';
 import { parseLoose, normalizeFacet } from '../schema/normalize.mjs';
 import { splitBudget, clipHeadTail } from '../budget.mjs';
 import { redact } from '../redact.mjs';
@@ -28,7 +29,21 @@ Rules:
   Judge each category on its own evidence. Do NOT let one category's responsibility
   spill onto another. If a tool failed and the transcript never says why, answer
   "unknown" — do not default to "environmental" to make the numbers look complete.
-- user_instructions: verbatim short instructions the user repeated or emphasized.`;
+- user_instructions: verbatim short instructions the user repeated or emphasized.
+  Keep the user's ORIGINAL LANGUAGE and wording. These are quoted directly in the
+  report as evidence, so a paraphrase destroys their value.
+- underlying_goal: 1-3 sentences on what the user was ACTUALLY trying to accomplish,
+  beneath the literal request — the business or operational outcome they were after.
+  Be concrete and specific to THIS session: name the systems, files, or decisions involved.
+  This drives the report's theme clustering; a generic sentence makes it useless.
+- primary_success: the single most valuable thing the assistant did well. "none" if nothing stood out.
+- claude_helpfulness: how much the assistant actually moved the work forward.
+- user_satisfaction_counts: count the user's reactions across the session. A correction or
+  a "no, do X instead" is dissatisfied; explicit thanks/approval is satisfied; silent
+  acceptance and moving on is likely_satisfied.
+- friction_detail: name the SPECIFIC defects, not categories. "introduced a wrong upper
+  bound on Net Proceeds and a cross-axis division in the ratio column" is useful;
+  "had some bugs" is not. This is the raw material for the report's diagnosis section.`;
 
 function buildPrompt(transcript, meta, { withEnums }) {
   const stats = JSON.stringify({
@@ -36,6 +51,10 @@ function buildPrompt(transcript, meta, { withEnums }) {
     toolCalls: meta.toolCalls, toolFailures: meta.toolFailures,
     userInterruptions: meta.userInterruptions, durationMinutes: meta.durationMinutes,
     topTools: Object.entries(meta.toolCounts || {}).sort((a, b) => b[1] - a[1]).slice(0, 8),
+    gitCommits: meta.gitCommits, gitPushes: meta.gitPushes,
+    // Codex 独有：用户显式给出的授权/风险姿态，比从工具比例反推可靠
+    approvalPolicy: meta.approvalPolicy, sandboxPolicy: meta.sandboxPolicy,
+    planSteps: (meta.planSteps || []).slice(0, 12),
   });
   let p = `${TASK}\n\nTranscript:\n${transcript}\n\nSession stats:\n${stats}\n`;
   if (withEnums) {
@@ -46,9 +65,14 @@ function buildPrompt(transcript, meta, { withEnums }) {
 - friction_counts keys: ${FRICTION.join(', ')}
 - friction_attribution: one value per friction category, chosen from:
   none | user_actionable | agent_capability | environmental | unknown
+- primary_success: ${PRIMARY_SUCCESS.join(' | ')}
+- claude_helpfulness: ${HELPFULNESS.join(' | ')}
+- user_satisfaction_counts keys: ${SATISFACTION.join(', ')}
 
 Return an object with keys: outcome, session_type, goal_categories, friction_counts,
-friction_attribution, friction_detail (string), user_instructions (array of strings), brief_summary (string).
+friction_attribution, friction_detail (string), user_instructions (array of strings),
+brief_summary (string), underlying_goal (string), primary_success, claude_helpfulness,
+user_satisfaction_counts.
 RESPOND WITH ONLY A VALID JSON OBJECT.\n`;
   } else {
     p += '\nReturn the facets as JSON matching the provided output schema.\n';

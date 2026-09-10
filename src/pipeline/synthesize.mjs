@@ -30,61 +30,75 @@ function EXEC_OPTS(input, timeout, cwd) {
   return { input, cwd, stdio: ['pipe', 'pipe', 'pipe'], timeout, maxBuffer: 64 * 1024 * 1024 };
 }
 
+const strObj = (props) => ({
+  type: 'object', additionalProperties: false,
+  properties: Object.fromEntries(props.map((k) => [k, { type: 'string' }])),
+  required: [...props],
+});
+const listOf = (props) => ({ type: 'array', items: strObj(props) });
+
+/**
+ * 七段结构。对齐官方 /insights 的段落划分（本机 54 条产物实测：7 个 h2 + 1 个 h3，
+ * 正文 33,821 字符），并按 Codex 场景替换其中的专有名词。
+ *
+ * v0.3 只有 5 个字段、叙事挤在一坨，实测正文 1,586 字——薄了 21 倍。
+ * 差距不在文笔，在**结构**：缺 themes / how_you_work / horizon 三段，
+ * 且规则没有证据句、下一步没有可粘贴提示词。
+ */
 export const SYNTHESIS_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
     headline: { type: 'string' },
-    working_well: {
-      type: 'object', additionalProperties: false,
-      properties: {
-        summary: { type: 'string' },
-        items: {
-          type: 'array',
-          items: {
-            type: 'object', additionalProperties: false,
-            properties: { title: { type: 'string' }, detail: { type: 'string' } },
-            required: ['title', 'detail'],
-          },
+    // ① 你在做什么：主题聚类，每个带会话数与叙述
+    themes: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          name: { type: 'string' },
+          session_estimate: { type: 'integer' },
+          detail: { type: 'string' },
         },
+        required: ['name', 'session_estimate', 'detail'],
       },
+    },
+    // ② 你怎么用它：使用姿态画像（不是做什么，是以什么方式用）
+    how_you_work: strObj(['summary', 'evidence', 'implication']),
+    // ③ 你做得漂亮的地方
+    impressive: {
+      type: 'object', additionalProperties: false,
+      properties: { summary: { type: 'string' }, items: listOf(['title', 'detail']) },
       required: ['summary', 'items'],
     },
-    friction_narrative: {
-      type: 'object', additionalProperties: false,
-      properties: {
-        yours_to_fix: { type: 'string' },
-        model_limits: { type: 'string' },
-        environment: { type: 'string' },
-      },
-      required: ['yours_to_fix', 'model_limits', 'environment'],
-    },
+    // ④ 哪里出了问题
+    friction_narrative: strObj(['summary', 'yours_to_fix', 'model_limits', 'environment']),
+    // ⑤ 可粘进 AGENTS.md 的规则：官方每条都带一句引用用户原话的证据，这是它最有说服力的地方
     rules: {
       type: 'array',
       items: {
         type: 'object', additionalProperties: false,
         properties: {
-          rule: { type: 'string' },        // 可直接粘进 AGENTS.md 的一行
-          why: { type: 'string' },         // 依据哪些观察
+          heading: { type: 'string' },        // 主题标题，如「验证纪律」
+          rule: { type: 'string' },           // 可直接粘贴的祈使句
+          why: { type: 'string' },
+          evidence_quote: { type: 'string' }, // 用户原话或具体事件，原文照引
           evidence_count: { type: 'integer' },
         },
-        required: ['rule', 'why', 'evidence_count'],
+        required: ['heading', 'rule', 'why', 'evidence_quote', 'evidence_count'],
       },
     },
-    next_steps: {
-      type: 'array',
-      items: {
-        type: 'object', additionalProperties: false,
-        properties: {
-          title: { type: 'string' },
-          why_for_you: { type: 'string' },
-          copyable_prompt: { type: 'string' },
-        },
-        required: ['title', 'why_for_you', 'copyable_prompt'],
-      },
+    // ⑥ 新用法：每条带可直接粘贴的提示词
+    next_steps: listOf(['title', 'why_for_you', 'copyable_prompt']),
+    // ⑦ 前瞻
+    horizon: {
+      type: 'object', additionalProperties: false,
+      properties: { summary: { type: 'string' }, items: listOf(['title', 'vision']) },
+      required: ['summary', 'items'],
     },
   },
-  required: ['headline', 'working_well', 'friction_narrative', 'rules', 'next_steps'],
+  required: ['headline', 'themes', 'how_you_work', 'impressive',
+             'friction_narrative', 'rules', 'next_steps', 'horizon'],
 };
 
 const SYSTEM = `You are writing a friction report for a developer about their own AI-coding sessions.
@@ -93,19 +107,43 @@ HARD RULES
 - The numbers are already computed. Never recount, never contradict the provided counts or ranking.
 - Write in second person, concrete and diagnostic. No flattery, no filler, no motivational tone.
 - Every claim must trace to the evidence provided. If evidence is thin, say less rather than inventing.
-- Quote or paraphrase actual details from the session evidence; a report that could describe anyone is worthless.
-- Write in the same language as the majority of the evidence text (Chinese evidence -> Chinese output).`;
+- Quote actual details and the user's own words from the evidence. A report that could
+  describe anyone is worthless — name the systems, files, commands and decisions involved.
+- Depth matters: this report replaces the user reading their own transcripts. Each section
+  should be several substantial paragraphs, not one sentence.`;
 
-function buildPrompt(agg, evidence, lang) {
-  const top = (list, n = 6) => list.slice(0, n).map((f) => `${f.key}: ${f.count} times across ${f.sessions} sessions`).join('\n');
+function buildPrompt(agg, evidence, lang, posture) {
+  const top = (list, n = 8) => list.slice(0, n)
+    .map((f) => `${f.key}: ${f.count} times across ${f.sessions} sessions`).join('\n');
+  const dist = (o) => Object.entries(o || {}).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${k}=${v}`).join(', ') || '(none)';
   return `Write the narrative sections of this report.
 
 ## Computed statistics (authoritative — do not recompute)
 
 Sessions analyzed: ${agg.n}
-Attribution of frictions: yours-to-fix ${agg.attribution.user_actionable}, model-limits ${agg.attribution.agent_capability}, environment ${agg.attribution.environmental}
+Attribution of frictions: yours-to-fix ${agg.attribution.user_actionable}, model-limits ${agg.attribution.agent_capability}, environment ${agg.attribution.environmental}, cause-unclear ${agg.attribution.unknown || 0}
 Outcomes: ${JSON.stringify(agg.outcomes)}
 Session types: ${JSON.stringify(agg.sessionTypes)}
+Helpfulness: ${JSON.stringify(agg.helpfulness || {})}
+Satisfaction reactions: ${JSON.stringify(agg.satisfaction || {})}
+Primary successes: ${JSON.stringify(agg.successes || {})}
+
+## How this developer actually drives the agent (for the "how_you_work" section)
+
+Tool call distribution: ${dist(posture.toolCounts)}
+Total tool calls ${posture.toolCalls}, git commits ${posture.gitCommits}, pushes ${posture.gitPushes}
+Tool failure rate: ${(posture.failureRate * 100).toFixed(1)}%
+User interruptions: ${posture.interruptions}
+Median session ${posture.medianDuration} min, longest ${posture.longestSession} min, active days ${posture.daysActive}
+Approval policy granted: ${dist(posture.approvalPolicies)}
+Sandbox policy granted: ${dist(posture.sandboxPolicies)}
+Entry points: ${dist(posture.originators)}   Launch source: ${dist(posture.sources)}
+Sessions with an explicit task plan: ${posture.planSessions}/${posture.sessions}
+NOTE: approval/sandbox policy is what the USER chose to grant the agent. "never" approval
+plus "danger-full-access" means they run it unattended with full trust — that is a posture
+finding, not a security note. Reason about the ratios (e.g. shell-exec vs file-edit calls)
+to characterise HOW they use the agent, and say what that implies.
 
 Top frictions (already ranked, noise-filtered):
 ${top(agg.friction) || '(none passed the noise floor)'}
@@ -113,11 +151,12 @@ ${top(agg.friction) || '(none passed the noise floor)'}
 Top goals:
 ${top(agg.goals) || '(none)'}
 
-Rule candidates (frictions repeated in >= 3 sessions — ONLY these may become rules):
+Rule candidates (frictions repeated in >= 3 sessions AND mostly judged user-fixable —
+ONLY these may become rules):
 ${agg.ruleCandidates.map((f) => `${f.key} (${f.sessions} sessions, ${f.count} occurrences)`).join('\n') || '(none — then return an empty rules array)'}
 
-Instructions the user repeated across sessions:
-${agg.repeatedInstructions.slice(0, 8).map((i) => `"${i.text}" (${i.n}x)`).join('\n') || '(none)'}
+Instructions the user repeated across sessions (quote these verbatim as evidence):
+${agg.repeatedInstructions.slice(0, 10).map((i) => `"${i.text}" (${i.n}x)`).join('\n') || '(none)'}
 
 ## Session evidence (free-text from individual sessions)
 
@@ -126,16 +165,25 @@ ${evidence}
 ## What to write
 
 - headline: one sentence naming the single most consequential pattern. Not a summary of counts.
-- working_well: 2-3 concrete things this developer does well, each grounded in the evidence.
-- friction_narrative: three separate paragraphs.
-    yours_to_fix   — what THEY could have done differently. This is the section that matters most;
-                     be specific and actionable, cite concrete situations from the evidence.
-    model_limits   — where the assistant itself fell short.
-    environment    — tooling, network, permissions, external services.
-  If a bucket has no evidence, say so in one short sentence instead of padding.
-- rules: 0-5 lines ready to paste into AGENTS.md / CLAUDE.md. Derive ONLY from the rule candidates above.
-  Each rule must be an imperative constraint, not a description. Set evidence_count from the candidate list.
-- next_steps: 2-3 things worth trying next, each with a prompt the user can paste directly into their agent.
+- themes: 3-6 clusters of what they actually work on, derived from the underlying_goal texts
+  in the evidence. session_estimate must be your count of evidence entries in that cluster and
+  the estimates should roughly sum to the session total. detail = 2-4 sentences naming the real
+  systems and problems, not category names.
+- how_you_work: characterise their OPERATING POSTURE from the distribution data above.
+    summary    — what kind of user they are, in one strong claim.
+    evidence   — the specific ratios and policies that support it, with the numbers.
+    implication— what this posture costs them or buys them.
+- impressive: 2-4 concrete things they do well, each a named habit with real evidence.
+- friction_narrative: summary + three separate paragraphs (yours_to_fix / model_limits /
+  environment). yours_to_fix matters most: name specific defects and situations, not categories.
+  If a bucket has no evidence, say so in one sentence rather than padding.
+- rules: 0-5 blocks ready to paste into AGENTS.md. Derive ONLY from the rule candidates.
+  Each rule is an imperative constraint. evidence_quote must be the user's OWN words
+  (verbatim, original language) or a specific named incident — this is what makes the rule credible.
+  Set evidence_count from the candidate list.
+- next_steps: 2-4 things worth trying, each with a prompt they can paste straight into their agent.
+- horizon: where this practice is heading if they keep going, and 2-3 concrete capabilities
+  worth building toward. Ground each in what the data already shows they are doing.
 
 ${lang === 'zh' ? 'Write all free-text in Simplified Chinese.' : 'Write all free-text in English.'}
 RESPOND WITH ONLY A VALID JSON OBJECT matching the provided schema.`;
@@ -153,6 +201,7 @@ export function buildEvidence(facets, { maxChars = 20000 } = {}) {
   const rows = [];
   for (const f of facets) {
     const parts = [];
+    if (f.underlying_goal) parts.push(['目标: ', String(f.underlying_goal)]);
     if (f.brief_summary) parts.push(['', String(f.brief_summary)]);
     if (f.friction_detail) parts.push(['摩擦: ', String(f.friction_detail)]);
     if (f.user_instructions?.length) parts.push(['用户指令: ', f.user_instructions.join(' / ')]);
@@ -190,7 +239,7 @@ function detectLang(text) {
   return cjk > text.length * 0.05 ? 'zh' : 'en';
 }
 
-export function synthesize(agg, facets, { model, timeoutMs = 420000, retries = 1 } = {}) {
+export function synthesize(agg, facets, { model, timeoutMs = 420000, retries = 1, posture = {} } = {}) {
   const evidence = buildEvidence(facets);
   if (!evidence.trim()) return { ok: false, code: 'E_NO_EVIDENCE' };
   const dir = mkdtempSync(join(tmpdir(), 'adi-syn-'));
@@ -200,7 +249,7 @@ export function synthesize(agg, facets, { model, timeoutMs = 420000, retries = 1
     const args = ['exec', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-o', outFile, '--output-schema', sf];
     if (model) args.push('-m', model);
     args.push('-');
-    const prompt = `${SYSTEM}\n\n${buildPrompt(agg, evidence, detectLang(evidence))}`;
+    const prompt = `${SYSTEM}\n\n${buildPrompt(agg, evidence, detectLang(evidence), posture)}`;
     let stderr = '', raw = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try { execFileSync('codex', args, EXEC_OPTS(prompt, timeoutMs, dir)); }
@@ -215,6 +264,51 @@ export function synthesize(agg, facets, { model, timeoutMs = 420000, retries = 1
     if (!raw) return { ok: false, code: 'E_SYNTHESIS_FAILED', detail: stderr };
     const parsed = parseLoose(raw);
     if (!parsed.ok) return { ok: false, code: 'E_BAD_JSON', detail: parsed.error };
+    return { ok: true, narrative: parsed.value };
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}
+
+/**
+ * 英文版叙事。
+ *
+ * 走**翻译**而不是「用英文再生成一遍」：后者会让中英两版讲不同的事，
+ * 对照阅读时读者无法判断哪版是准的。翻译则保证两版是同一份结论。
+ * 复用同一个 SYNTHESIS_SCHEMA，结构天然对齐，渲染层可以按下标配对。
+ *
+ * 可粘贴的东西不翻：copyable_prompt 是给 agent 吃的、evidence_quote 是用户原话，
+ * 翻了就失去用途和证据效力。
+ */
+export function translateNarrative(narrative, { model, timeoutMs = 300000 } = {}) {
+  if (!narrative) return { ok: false, code: 'E_NO_NARRATIVE' };
+  const dir = mkdtempSync(join(tmpdir(), 'adi-tr-'));
+  try {
+    const sf = join(dir, 's.json'); const outFile = join(dir, 'o.json');
+    writeFileSync(sf, JSON.stringify(SYNTHESIS_SCHEMA));
+    const args = ['exec', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config',
+                  '-o', outFile, '--output-schema', sf];
+    if (model) args.push('-m', model);
+    args.push('-');
+    const prompt = `Translate this report JSON into natural English.
+
+RULES
+- Translate every free-text field. Keep the JSON structure and array order identical.
+- This is a translation, not a rewrite: do not add, drop, or soften any claim.
+- Keep technical terms, tool names, file names, commands and numbers exactly as they are.
+- DO NOT translate the field "copyable_prompt" — copy it through verbatim. It is fed to an
+  agent, and the user's agent works in the original language.
+- DO NOT translate "evidence_quote" — it quotes the user's own words and is used as evidence.
+- Write plain professional English, second person, no marketing tone.
+
+${JSON.stringify(narrative)}
+
+RESPOND WITH ONLY A VALID JSON OBJECT matching the provided schema.`;
+    let raw = null, stderr = '';
+    try { execFileSync('codex', args, EXEC_OPTS(prompt, timeoutMs, dir)); }
+    catch (e) { stderr = cleanErr((e.stderr?.toString() || '') + '\n' + (e.message || '')); }
+    try { raw = readFileSync(outFile, 'utf8'); } catch { /* noop */ }
+    if (!raw) return { ok: false, code: 'E_TRANSLATE_FAILED', stderr };
+    const parsed = parseLoose(raw);
+    if (!parsed.ok) return { ok: false, code: 'E_TRANSLATE_PARSE' };
     return { ok: true, narrative: parsed.value };
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }

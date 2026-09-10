@@ -11,7 +11,7 @@ import { stratifiedSample } from './pipeline/sample.mjs';
 import { aggregateFacets } from './pipeline/aggregate.mjs';
 import { labelWithCodex, compactTranscript } from './pipeline/label.mjs';
 import { renderHtml } from './render/html.mjs';
-import { synthesize } from './pipeline/synthesize.mjs';
+import { synthesize, translateNarrative } from './pipeline/synthesize.mjs';
 import { createHash } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,7 +21,7 @@ const CACHE = join(process.env.ADI_CACHE || join(homedir(), '.agents-deep-insigh
 // 指纹必须包含转录内容本身。此前只用长度，内容变了但长度不变会命中旧缓存、
 // 复用过时结果（外部测试发现："Need AAA" -> "Need BBB" 指纹不变）。
 const fingerprint = (m) => createHash('sha256')
-  .update(`v3|${m.provider}|${m.id}|${m.userMessages}|${m.toolCalls}|`)   // v3: friction_attribution 改为逐类别
+  .update(`v4|${m.provider}|${m.id}|${m.userMessages}|${m.toolCalls}|`)   // v4: facet 加 underlying_goal/primary_success/helpfulness/satisfaction
   .update(compactTranscript(m.transcript || []))
   .digest('hex').slice(0, 16);
 
@@ -62,6 +62,7 @@ function help() {
                        --no-schema   降级到 prompt-only（不推荐）
                        --no-open     不自动打开浏览器
                        --no-narrative 跳过叙事合成，只出统计（省一次调用）
+                       --no-english   不生成英文版（省一次调用）
 
   --days <n>           时间窗，默认 30；0 表示全部
   --provider <name>    只用某个数据源：codex | claude-code
@@ -175,7 +176,7 @@ async function main() {
     let narrative = null;
     if (!has('no-narrative')) {
       process.stdout.write('  正在合成叙事…\r');
-      const syn = synthesize(facetAgg, facets, { model });
+      const syn = synthesize(facetAgg, facets, { model, posture: metaAgg });
       if (syn.ok) { narrative = syn.narrative; console.log('  叙事已合成                    '); }
       else {
         console.log(`  叙事合成失败（${syn.code}），退回纯统计报告`);
@@ -183,11 +184,20 @@ async function main() {
         console.log('    可用 --no-narrative 跳过这一步，或跑 `adi doctor --issue` 提 issue');
       }
     }
+    // 英文版：翻译而非重新生成，保证中英两版讲同一件事。
+    // 默认开；--no-english 关掉（省一次模型调用）。
+    let narrativeEn = null;
+    if (narrative && !has('no-english')) {
+      process.stdout.write('  正在生成英文版…\r');
+      const tr = translateNarrative(narrative, { model });
+      if (tr.ok) { narrativeEn = tr.narrative; console.log('  英文版已生成                  '); }
+      else console.log(`  英文版生成失败（${tr.code}），只输出中文`);
+    }
     const days_ = picked.map((m) => m.startedAt).filter(Boolean);
     const spanDays = days_.length ? Math.round((Math.max(...days_) - Math.min(...days_)) / 864e5) : 0;
-    const html = renderHtml({ metaAgg, facetAgg, narrative, meta: {
+    const html = renderHtml({ metaAgg, facetAgg, narrative, narrativeEn, meta: {
       generatedAt: new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',  // 标时区，否则本地时间会被误读
-      providers: used, windowDays: days, spanDays, version: '0.3.1', repairsCount } });
+      providers: used, windowDays: days, spanDays, version: '0.4.0', repairsCount } });
     const out = String(flag('out', join(process.cwd(), 'adi-report.html')));
     fs.writeFileSync(out, html);
     console.log(`  报告已生成: ${out}`);

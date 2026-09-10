@@ -13,6 +13,66 @@
 - 跨工具同尺对比（同一类摩擦在 Codex 与 Claude Code 上是否都排前列）
 - 周度清单出口：未完成 / 半成品 / 已出 bug / 可合并
 
+## [0.4.0] - 2026-09-10
+
+用户对照官方 Claude Code `/insights` 报告后指出「差距特别大，内容少了很多」。
+本机实测证实：官方 **33,821 字符 / 7 段**，v0.3.1 **1,586 字符 / 挤在一段**——薄了 21 倍。
+差距不在文笔，在**结构**和**facet 缺字段**。这一版按官方产物逐段拆解后补齐。
+
+### 新增：报告扩到七段（对齐官方结构）
+
+| 段落 | v0.3.1 | v0.4.0 |
+|---|---|---|
+| 你主要在做什么 | 只有计数柱状图 | **主题聚类**，每个带会话数与叙述 |
+| 你是怎么用它的 | **完全没有** | 新增：使用姿态画像 + 支撑数据 |
+| 你做得漂亮的地方 | 三条短句 | 命名习惯 + 具体事件证据 |
+| 哪里出了问题 | 三段泛泛而谈 | 摘要 + 三段归因，要求点名具体缺陷 |
+| AGENTS.md 规则 | 只有规则文本 | **主题标题 + 证据句 + 勾选框 + 复制按钮** |
+| 下一步可以试试 | 有提示词 | 不变（本就有） |
+| 再往前一步 | **完全没有** | 新增：前瞻 |
+
+### 新增：中英双语
+
+- 三态切换：**双语对照**（默认）/ 中文 / English。中英各出一份兄弟节点，
+  用 CSS 控制显隐——JS 替换文本实现不了「对照」这一态，而对照恰恰最常用。
+- 英文走**翻译**而不是「用英文再生成一遍」：后者会让两版讲不同的事，
+  读者无法判断哪版准。复用同一个 schema，结构天然对齐。
+- `copyable_prompt` 与 `evidence_quote` **不翻译**：前者要喂给 agent，
+  后者是用户原话，翻了就失去用途和证据效力。
+
+### 新增：facet 补 4 个叙事字段
+
+`underlying_goal` / `primary_success` / `claude_helpfulness` / `user_satisfaction_counts`。
+缺了这些，「你主要在做什么」「你做得漂亮的地方」「再往前一步」三段**结构上就写不出来**。
+
+**顺带修正一个此前的错误判断**：v0.2 的 DESIGN 把「闭合枚举」当成相对官方的纯改进。
+实测官方是**开放词表**（54 条会话产出 171 个 goal 类别、35 个 friction 类别，
+肉眼可见漂移：`environment_issue` vs `environment_issues`、8 种 `incomplete_*` 变体）。
+闭合枚举确实让计数可比，但也砍掉了报告的具体性。正解不是二选一而是**分层**：
+枚举管计数，自由文本管叙事原料。
+
+### 新增：Codex 独有信号（官方 /insights 没有等价物）
+
+实扫 34 条会话的可用率：`approval_policy` 85% · `sandbox_policy` 85% ·
+`reasoning_effort` 85% · `originator`/`source` 100% · `update_plan` 50%。
+
+官方那段 "How You Use Claude Code" 只能从工具调用比例**反推**用户姿态；
+Codex 把用户授予的授权与沙箱策略显式写在会话文件里——这是比官方更硬的证据。
+（`reasoning` 是 `encrypted_content`，读不了，已排除。）
+
+`model` 字段此前恒为 `null`，实际可用率 85%，属于白扔。
+
+### 测试
+
+35 → 41。新增七段结构、双语无泄漏、规则证据句与勾选框、schema 逐层 strict 自检。
+开发中被这些测试抓到的真 bug：中文规则的 `<code>` 缺 `zh` 标记（英文模式下中英规则同时显示）、
+数字卡与徽章无语言标记、5 处小标题英文后缀没按开关走（单语报告里冒英文碎片）。
+
+**其中一条测试自己也是坏的**：判「有没有语言开关」时匹配了字符串 `langbar`，
+而 CSS 里恒有 `.langbar` 规则——查的是样式表不是元素，报了个假失败。
+另有一处泄漏测试没抓到，因为夹具 `repeatedInstructions: []` 让那个分支根本没渲染；
+**测不到的分支就是泄漏的藏身处**，夹具已补齐。
+
 ## [0.3.1] - 2026-09-10
 
 v0.3.0 修第一层（单条消息 400→1200）时，**给第二层制造了回归**——这是自查发现的，
@@ -197,7 +257,8 @@ v0.3.0 修第一层（单条消息 400→1200）时，**给第二层制造了回
 - 仅在 macOS + codex-cli 0.131.0 + gpt-5.5 上实测。
 - codex-cli 0.131.0 无法使用账号默认模型（需 `--model gpt-5.5` 或升级 Codex）。
 
-[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.2.0...v0.2.1
