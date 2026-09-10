@@ -188,8 +188,8 @@ ${bi(N.how_you_work.implication, pick('how_you_work.implication'))}</div>
 <div class="note posture"><b><span class="zh">姿态数据</span>${BI ? '<span class="en">Operating posture</span>' : ''}</b><span class="zh">（Codex 独有，Claude Code 的 /insights 没有这些信号）</span>${BI ? '<span class="en"> (Codex-only; Claude Code /insights has no equivalent signal)</span>' : ''}<br>
 ${(() => { const d = (o) => Object.entries(o || {}).map(([k, v]) => `${esc(k)} ${v}`).join(' · ');
   const ap = d(metaAgg.approvalPolicies), sb = d(metaAgg.sandboxPolicies), og = d(metaAgg.originators);
-  const zh = `授权策略 ${ap || '未记录'} · 沙箱 ${sb || '未记录'} · 入口 ${og || '未记录'} · ${metaAgg.planSessions || 0}/${metaAgg.sessions} 个会话有显式任务分解`;
-  const en = `approval ${ap || 'not recorded'} · sandbox ${sb || 'not recorded'} · entry ${og || 'not recorded'} · ${metaAgg.planSessions || 0}/${metaAgg.sessions} sessions with an explicit task plan`;
+  const zh = `授权策略 ${ap || '未记录'} · 沙箱 ${sb || '未记录'} · 入口 ${og || '未记录'} · ${metaAgg.planSessions || 0}/${metaAgg.postureSessions || 0} 个会话有显式任务分解（分母=带姿态信号的会话）`;
+  const en = `approval ${ap || 'not recorded'} · sandbox ${sb || 'not recorded'} · entry ${og || 'not recorded'} · ${metaAgg.planSessions || 0}/${metaAgg.postureSessions || 0} sessions with an explicit task plan`;
   return `<span class="zh">${zh}</span>` + (BI ? `<span class="en">${en}</span>` : ''); })()}</div>` : ''}
 
 ${N && N.impressive ? `
@@ -303,6 +303,27 @@ messages may not be covered.
 Measured labelling noise is about ±1 per session, so <b>individual numbers are not worth scrutinising;
 the trend and the ranking are</b>.
 ${meta.repairsCount ? `Normalisation repaired ${meta.repairsCount} model output deviations in this run.` : ''}</span>` : ''}</div>
+
+${meta.artifactsDir ? `
+<h2 class=" zh">如何核对这份结论</h2>${BI ? '<h2 class=" en">How to verify these conclusions</h2>' : ''}
+<div class="note"><span class="zh">这份报告的每个数字都能自己复核。中间产物落在报告同级目录
+<code>${esc(meta.artifactsDir)}/</code>：<br>
+· <code>aggregate.json</code> — 全部聚合数字（顶部卡片、柱状图、归因比例的来源）<br>
+· <code>facets.json</code> — 逐会话的模型打标原始输出，没有二次加工<br>
+· <code>sample-index.json</code> — 进入深度分析的是哪些会话，各自的消息数与工具成败<br>
+· <code>narrative.json</code> — 中英叙事的原始 JSON<br>
+· <code>run.json</code> — 时间窗、候选数、采样额度、立规门槛、归一化修复数<br>
+判据不一致时以 <code>aggregate.json</code> 为准——报告里的数字都由它渲染，
+叙事部分则可能带模型的解释成分。</span>
+${BI ? `<span class="en">Every number here can be checked. The intermediate artifacts are written next to
+this report in <code>${esc(meta.artifactsDir)}/</code>:<br>
+· <code>aggregate.json</code> — all aggregated figures (the source of the cards, bars and attribution split)<br>
+· <code>facets.json</code> — the raw per-session model labels, unprocessed<br>
+· <code>sample-index.json</code> — which sessions entered deep analysis, with their message and tool-outcome counts<br>
+· <code>narrative.json</code> — the raw narrative JSON, both languages<br>
+· <code>run.json</code> — time window, candidate pool, sampling quota, rule threshold, normalisation repairs<br>
+Where they disagree, <code>aggregate.json</code> wins — the report's numbers are rendered from it,
+whereas the narrative may carry the model's interpretation.</span>` : ''}</div>` : ''}
 
 <footer>agents-deep-insights v${esc(meta.version)} · <span class="zh">本地生成</span>${BI ? '<span class="en">generated locally</span>' : ''} ·
 <a href="https://github.com/gmggyyds/agents-deep-insights">github.com/gmggyyds/agents-deep-insights</a></footer>

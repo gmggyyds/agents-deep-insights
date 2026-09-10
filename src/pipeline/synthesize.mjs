@@ -143,11 +143,17 @@ Tool call distribution: ${dist(posture.toolCounts)}
 Total tool calls ${posture.toolCalls}, git commits ${posture.gitCommits}, pushes ${posture.gitPushes}
 Tool failure rate: ${(posture.failureRate * 100).toFixed(1)}%
 User interruptions: ${posture.interruptions}
-Median session ${posture.medianDuration} min, longest ${posture.longestSession} min, active days ${posture.daysActive}
+Session WALL-CLOCK SPAN (first to last timestamp, INCLUDES idle time — this is NOT time worked):
+  median ${posture.medianDuration} min, longest ${posture.longestSession} min. Active days ${posture.daysActive}.
+  Do not describe these as "hours of work"; a long span usually means the window stayed open.
+
+The posture signals below exist ONLY for Codex sessions (${posture.postureSessions} of
+${posture.sessions} sessions carry them). Use ${posture.postureSessions} as the denominator when
+you quote a ratio — quoting them against the full session count understates them severalfold.
 Approval policy granted: ${dist(posture.approvalPolicies)}
 Sandbox policy granted: ${dist(posture.sandboxPolicies)}
 Entry points: ${dist(posture.originators)}   Launch source: ${dist(posture.sources)}
-Sessions with an explicit task plan: ${posture.planSessions}/${posture.sessions}
+Sessions with an explicit task plan: ${posture.planSessions}/${posture.postureSessions}
 NOTE: approval/sandbox policy is what the USER chose to grant the agent. "never" approval
 plus "danger-full-access" means they run it unattended with full trust — that is a posture
 finding, not a security note. Reason about the ratios (e.g. shell-exec vs file-edit calls)

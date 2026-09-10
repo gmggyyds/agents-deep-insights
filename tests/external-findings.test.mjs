@@ -5,7 +5,7 @@
  */
 import { test } from 'node:test';
 import { compactTranscript } from '../src/pipeline/label.mjs';
-import { readFileSync as _rf, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { readFileSync as _rf, mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse as parseClaudeCode } from '../src/providers/claude-code.mjs';
@@ -14,6 +14,7 @@ const FACET_SRC = _rf(new URL('../src/schema/facet.mjs', import.meta.url), 'utf8
 const LABEL_SRC = _rf(new URL('../src/pipeline/label.mjs', import.meta.url), 'utf8');
 const mkMeta = () => ({ toolFailures: 0, toolOutcomesKnown: 0, toolStillRunning: 0, toolOutcomeUnknown: 0 });
 import { version } from '../src/version.mjs';
+import { readTranscript, transcriptIndex, classifyToolResult } from '../src/providers/cc-transcript.mjs';
 import { renderHtml } from '../src/render/html.mjs';
 import { SYNTHESIS_SCHEMA } from '../src/pipeline/synthesize.mjs';
 import { splitBudget } from '../src/budget.mjs';
@@ -388,4 +389,111 @@ test('版本号必须与 package.json 一致，且不得在代码里硬编码', 
     const hard = code.match(/(?<![\w.])v?\d+\.\d+\.\d+(?![\w.])/g) || [];
     assert.deepEqual(hard, [], `${f} 里仍有硬编码版本号: ${hard.join(', ')}`);
   }
+});
+
+test('落了中间产物就必须在报告里指出来，否则等于没有', () => {
+  const withA = renderHtml({ ...renderArgs(FAKE_EN),
+    meta: { ...renderArgs(FAKE_EN).meta, artifactsDir: 'adi-report-artifacts' } });
+  assert.match(withA, /如何核对这份结论/, '缺少核对入口');
+  for (const f of ['aggregate.json', 'facets.json', 'sample-index.json', 'run.json']) {
+    assert.ok(withA.includes(f), `没有指出 ${f}`);
+  }
+  assert.ok(withA.includes('adi-report-artifacts'), '没有给出目录名');
+  // 没落盘时不该凭空承诺可核对
+  const without = renderHtml(renderArgs(FAKE_EN));
+  assert.doesNotMatch(without, /如何核对这份结论/, '没落盘却声称可核对');
+});
+
+/* ── v0.6.0：Claude Code 正文提取 ──────────────────────────────────── */
+
+test('工具结果：is_error 是权威信号，缺这个字段算判不出来而不是成功', () => {
+  const a = { toolFailures: 0, toolOutcomesKnown: 0, toolOutcomeUnknown: 0 };
+  classifyToolResult({ is_error: true }, a);
+  assert.equal(a.toolFailures, 1); assert.equal(a.toolOutcomesKnown, 1);
+  classifyToolResult({ is_error: false }, a);
+  assert.equal(a.toolFailures, 1); assert.equal(a.toolOutcomesKnown, 2);
+  // 实测抽样里 is_error 缺失占多数（1334 缺 / 692 假 / 80 真），
+  // 把缺失当成功会系统性压低失败率——Codex 侧已经栽过一次同型的。
+  classifyToolResult({}, a);
+  assert.equal(a.toolOutcomeUnknown, 1, '缺 is_error 必须计入 unknown');
+  assert.equal(a.toolOutcomesKnown, 2, 'unknown 不得进可判定集');
+});
+
+test('正文提取：子代理行不计入、命令回灌不算用户消息', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'adi-cc-'));
+  const proj = join(dir, 'projects', '-x'); mkdirSync(proj, { recursive: true });
+  const sid = 'test-session-1';
+  const rows = [
+    { type: 'user', isSidechain: false, message: { role: 'user', content: '真实的用户提问内容' } },
+    // 子代理产生的行：Claude Code 用 isSidechain 标记
+    { type: 'user', isSidechain: true, message: { role: 'user', content: '子代理的任务书不该算进来' } },
+    // 命令输出回灌 / 系统提醒：不是人打的字
+    { type: 'user', isSidechain: false, message: { role: 'user', content: '<system-reminder>提醒正文</system-reminder>' } },
+    { type: 'user', isSidechain: false, message: { role: 'user', content: '<command-name>/foo</command-name>' } },
+    { type: 'assistant', isSidechain: false, message: { role: 'assistant', model: 'claude-opus-5',
+      content: [{ type: 'thinking', thinking: '内部推理不该进 transcript' },
+                { type: 'text', text: '助手的回答' },
+                { type: 'tool_use', name: 'Bash', input: {} }] } },
+    { type: 'user', isSidechain: false, message: { role: 'user',
+      content: [{ type: 'tool_result', is_error: true, content: 'boom' }] } },
+  ];
+  writeFileSync(join(proj, `${sid}.jsonl`), rows.map((r) => JSON.stringify(r)).join('\n'));
+  const prevHome = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  try {
+    transcriptIndex({ rebuild: true });
+    const r = readTranscript(sid);
+    assert.ok(r, '应能读到 transcript');
+    assert.equal(r.stats.userMessages, 1, '只有 1 条是人打的字');
+    assert.equal(r.stats.sidechainLines, 1, '子代理行要如实计数而不是静默丢弃');
+    assert.equal(r.stats.toolCalls, 1);
+    assert.equal(r.stats.toolFailures, 1);
+    const joined = r.transcript.join('\n');
+    assert.ok(joined.includes('真实的用户提问内容'));
+    assert.ok(!joined.includes('子代理的任务书'), '子代理内容不得进 transcript');
+    assert.ok(!joined.includes('内部推理'), 'thinking 块不得进 transcript');
+    assert.ok(!/提醒正文|command-name/.test(joined), '系统注入不得进 transcript');
+  } finally {
+    if (prevHome === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = prevHome;
+    transcriptIndex({ rebuild: true });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('正文索引只扫一层——深层是子代理记录，递归会把它们混进来', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'adi-cc2-'));
+  const proj = join(dir, 'projects', '-y');
+  mkdirSync(join(proj, 'deadbeef', 'subagents'), { recursive: true });
+  writeFileSync(join(proj, 'real-session.jsonl'), '{}');
+  writeFileSync(join(proj, 'deadbeef', 'subagents', 'agent-xyz.jsonl'), '{}');
+  const prev = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  try {
+    const idx = transcriptIndex({ rebuild: true });
+    assert.ok(idx.has('real-session'), '一层的真实会话要进索引');
+    assert.ok(!idx.has('agent-xyz'), '子代理记录不得进索引');
+  } finally {
+    if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = prev;
+    transcriptIndex({ rebuild: true });
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('只有部分数据源具备的信号，必须用自己的分母', () => {
+  // 姿态信号（授权/沙箱/任务分解）目前只有 Codex 会话带。
+  // 用全部会话当分母会稀释比例——实测「8/411」，真实分母是 17 个 Codex 会话，差 24 倍。
+  const cxWithPosture = { provider: 'codex', source: 'vscode', userMessages: 2, durationMinutes: 5,
+    toolCalls: 1, toolCounts: {}, responseGaps: [], approvalPolicy: 'never',
+    sandboxPolicy: 'danger-full-access', planSteps: ['a'] };
+  const ccNoPosture = { provider: 'claude-code', userMessages: 2, durationMinutes: 5,
+    toolCalls: 1, toolCounts: {}, responseGaps: [] };
+  const a = aggregateMetas([cxWithPosture, ...Array(30).fill(ccNoPosture)]);
+  assert.equal(a.sessions, 31, '总会话数照常统计');
+  assert.equal(a.postureSessions, 1, '带姿态信号的只有 1 个');
+  assert.equal(a.planSessions, 1);
+  const h = renderHtml({ ...renderArgs(null), metaAgg: a });
+  assert.ok(h.includes('1/1 个会话有显式任务分解'), `分母用错了：${(h.match(/\d+\/\d+ 个会话有显式任务分解/) || [])[0]}`);
+  assert.ok(!h.includes('1/31 个会话有显式任务分解'), '不得用全部会话当分母');
 });

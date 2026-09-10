@@ -13,6 +13,63 @@
 - 跨工具同尺对比（同一类摩擦在 Codex 与 Claude Code 上是否都排前列）
 - 周度清单出口：未完成 / 半成品 / 已出 bug / 可合并
 
+## [0.6.0] - 2026-09-10
+
+自查跑完 v0.5.2 后，我给自己列的两个短板：**样本量**（6 个会话撑不起「模式」类结论）
+和**不可核对**（外部使用者的复盘报告附了全部中间产物，我没有）。这一版把两个都做掉。
+
+### 新增：Claude Code 会话终于能进深度分析
+
+此前 `claude-code` 只读官方 `session-meta`（纯元数据、无对话正文），所以**一个都进不了 L3**，
+本机深度分析只剩 6 个 Codex 会话。而 `~/.claude/projects` 里躺着 **29,869 个带完整对话的 jsonl**。
+
+新增 `src/providers/cc-transcript.mjs`：**统计仍以官方 session-meta 为准**
+（不重算官方已有的数——那条「自建解析器漏算 cache token 500 倍」的教训依然成立），
+只补它没有提供的那一样东西：正文。394 个 session-meta **100% 都能配上 jsonl**。
+
+| | v0.5.2 | v0.6.0 |
+|---|---|---|
+| L3 候选 | 6 | **420** |
+| 实际分析 | 6（全 Codex） | **24（19 Claude Code + 5 Codex）** |
+
+工具成败也改用 jsonl 里的 `is_error`（权威信号）：官方 `tool_errors` 只有总数，
+拿不到「判不出来」那一档，会把未知静默算进成功。抽样实测 `is_error` 缺失占多数
+（1334 缺 / 692 假 / 80 真），这一档不单列就是系统性压低失败率。
+
+🔴 **索引只扫一层，不要改成递归**：实测 29,869 个 jsonl 的层级分布是
+`{1: 15196, 3: 4113, 5: 11010}`，深层全是 `<session>/subagents/agent-*.jsonl`。
+递归会把 14,673 条子代理记录混进「你与 agent 的协作」，重演 Codex 侧那个坑。已加测试守住。
+
+### 新增：中间产物落盘，报告里给出核对入口
+
+默认在报告同级写 `<报告名>-artifacts/`：`aggregate.json`（全部聚合数字）、
+`facets.json`（逐会话打标原始输出）、`sample-index.json`（哪些会话进了分析）、
+`narrative.json`、`run.json`（时间窗/候选数/采样额度/立规门槛/归一化修复数）。
+报告新增「如何核对这份结论」一段逐个说明用途，并写明判据不一致时以 `aggregate.json` 为准。
+`--no-artifacts` 可关。
+
+**报告的可信度不该建立在「相信作者」上。** 这是三份对照里唯一我明确落后的一项。
+
+### 修复：姿态信号用错了分母
+
+授权策略、沙箱、任务分解**只有 Codex 会话带**，却按全部会话做分母——
+报告写出「8/411 个会话有显式任务分解」，真实分母是 17 个 Codex 会话，**差 24 倍**。
+现在这类信号自带 `postureSessions` 分母，并在报告里标注「分母=带姿态信号的会话」。
+
+### 修复：把会话跨度说成了工时
+
+`medianDuration` / `longestSession` 是首尾时间戳之差（含挂机），
+最长一条 21,643 分钟 = 15 天。此前以 `Median session X min` 喂给模型，
+它据此写了「跨天运行的工程执行」这类结论。现在 prompt 里明确标注这是 wall-clock span、
+不是工作时长，并禁止描述成「工作了多少小时」。
+
+### 测试
+
+52 → 56。新增：`is_error` 缺失必须计入 unknown、子代理行不计入且要如实计数、
+系统注入不算用户消息、thinking 块不进 transcript、索引只扫一层、
+落了中间产物必须在报告里指出来、部分数据源特有的信号必须用自己的分母。
+每条都验证过能对退化变红。
+
 ## [0.5.2] - 2026-09-10
 
 自己完整跑了一遍并逐段读了产出，读出三个缺陷——**都是只有真读报告才会发现的**。
@@ -387,7 +444,8 @@ v0.3.0 修第一层（单条消息 400→1200）时，**给第二层制造了回
 - 仅在 macOS + codex-cli 0.131.0 + gpt-5.5 上实测。
 - codex-cli 0.131.0 无法使用账号默认模型（需 `--model gpt-5.5` 或升级 Codex）。
 
-[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/gmggyyds/agents-deep-insights/compare/v0.4.0...v0.5.0

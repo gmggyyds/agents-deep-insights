@@ -5,7 +5,7 @@ globalThis.__adi_fs = fs;
 import { version } from './version.mjs';
 import * as codex from './providers/codex.mjs';
 import * as cc from './providers/claude-code.mjs';
-import { aggregateMetas } from './pipeline/aggregate.mjs';
+import { aggregateMetas, RULE_THRESHOLD, NOISE_FLOOR } from './pipeline/aggregate.mjs';
 import { renderStats } from './render/stats.mjs';
 import { collect, probeSchema, renderIssue } from './doctor.mjs';
 import { stratifiedSample } from './pipeline/sample.mjs';
@@ -73,6 +73,7 @@ function help() {
                        --no-open     不自动打开浏览器
                        --no-narrative 跳过叙事合成，只出统计（省一次调用）
                        --no-english   不生成英文版（省一次调用）
+                       --no-artifacts 不落盘中间产物（默认会落，供复核）
 
   --days <n>           时间窗，默认 30；0 表示全部
   --provider <name>    只用某个数据源：codex | claude-code
@@ -131,8 +132,8 @@ async function main() {
         console.error('  试试放宽时间窗：`adi run --days 0`，或跑 `adi doctor` 查看数据源。\n');
       } else {
         console.error(`\n  找到 ${metas.length} 个会话，但没有一个带可读的对话内容。`);
-        console.error('  Claude Code 的官方 session-meta 只含元数据、不含对话，深度分析目前只支持 Codex 会话。');
-        console.error('  如果你有 Codex 会话，试试 `adi run --provider codex --days 0`。\n');
+        console.error('  Codex 的正文在 ~/.codex/sessions；Claude Code 的在 ~/.claude/projects。');
+        console.error('  跑 `adi doctor` 看两个数据源分别找到了什么。\n');
       }
       process.exitCode = 1; return;
     }
@@ -143,7 +144,9 @@ async function main() {
     fs.mkdirSync(CACHE, { recursive: true });
 
     console.log(`\n  分析 ${picked.length} 个会话（从 ${withText.length} 个候选中分层采样）`);
-    console.log(`  provider: codex${model ? ' · model ' + model : ''}${strict ? ' · strict schema' : ' · prompt-only（降级）'}`);
+    const byProv = picked.reduce((a, m) => { a[m.provider] = (a[m.provider] || 0) + 1; return a; }, {});
+    console.log(`  样本来源: ${Object.entries(byProv).map(([k, v]) => `${k} ${v}`).join(' + ')}`
+      + `${model ? ' · model ' + model : ''}${strict ? ' · strict schema' : ' · prompt-only（降级）'}`);
     console.log('  会调用 LLM 并消耗你自己的订阅额度。Ctrl-C 可随时中断，已完成的会缓存。\n');
 
     const facets = []; let repairsCount = 0, fresh = 0, cached = 0, failed = 0; let firstErr = null;
@@ -205,12 +208,44 @@ async function main() {
     }
     const days_ = picked.map((m) => m.startedAt).filter(Boolean);
     const spanDays = days_.length ? Math.round((Math.max(...days_) - Math.min(...days_)) / 864e5) : 0;
-    const html = renderHtml({ metaAgg, facetAgg, narrative, narrativeEn, meta: {
-      generatedAt: new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',  // 标时区，否则本地时间会被误读
-      providers: used, windowDays: days, spanDays, version: version(), repairsCount } });
     const out = String(flag('out', join(process.cwd(), 'adi-report.html')));
-    fs.writeFileSync(out, html);
+
+    // 可核对性：把中间产物落盘，让读者能自己复核结论，而不是只能选择相信。
+    // 一位外部使用者的复盘报告里附了全部中间产物（aggregate/facets/样本清单/证据审核），
+    // 那是三份对照里唯一我明确落后的一项——报告的可信度不该建立在「相信作者」上。
+    let artifacts = null;
+    if (!has('no-artifacts')) {
+      const dir = out.replace(/\.html?$/i, '') + '-artifacts';
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+        const w = (n, o) => fs.writeFileSync(join(dir, n), JSON.stringify(o, null, 2));
+        w('aggregate.json', { meta: metaAgg, facets: facetAgg });
+        w('facets.json', facets);
+        // 样本清单：只放能对上号的字段，不放正文（正文含业务内容，落盘要用户自己决定）
+        w('sample-index.json', picked.map((m) => ({
+          provider: m.provider, id: m.id, startedAt: m.startedAt, durationMinutes: m.durationMinutes,
+          userMessages: m.userMessages, toolCalls: m.toolCalls,
+          toolFailures: m.toolFailures, toolOutcomesKnown: m.toolOutcomesKnown,
+          toolOutcomeUnknown: m.toolOutcomeUnknown, transcriptComplete: !!m.transcriptComplete,
+        })));
+        w('narrative.json', { zh: narrative, en: narrativeEn });
+        w('run.json', {
+          version: version(), generatedAt: new Date().toISOString(),
+          windowDays: days, providers: used,
+          candidates: withText.length, analyzed: picked.length, quota,
+          labelFailed: failed, normalizationRepairs: repairsCount,
+          ruleThreshold: RULE_THRESHOLD, noiseFloor: NOISE_FLOOR,
+        });
+        artifacts = dir;
+      } catch (e) { console.log(`  中间产物落盘失败（${e.code || e.message}），报告不受影响`); }
+    }
+
+    fs.writeFileSync(out, renderHtml({ metaAgg, facetAgg, narrative, narrativeEn, meta: {
+      generatedAt: new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
+      providers: used, windowDays: days, spanDays, version: version(), repairsCount,
+      artifactsDir: artifacts ? artifacts.split(/[\\/]/).pop() : null } }));
     console.log(`  报告已生成: ${out}`);
+    if (artifacts) console.log(`  中间产物: ${artifacts}/  （aggregate / facets / sample-index / narrative / run）`);
     if (failed) console.log(`  ${failed} 个会话打标失败（已跳过）。细节见 \`adi doctor\``);
     if (repairsCount) console.log(`  归一化修复了 ${repairsCount} 处模型输出偏差`);
     if (!has('no-open')) { try { execFileSync(process.platform === 'darwin' ? 'open' : 'xdg-open', [out], { stdio: 'ignore' }); } catch {} }

@@ -11,6 +11,10 @@ export function aggregateMetas(metas) {
     totalMinutes: 0, toolCounts: {}, projects: {}, hours: Array(24).fill(0),
     gaps: [], days: new Set(), durations: [],
     subagentSessions: 0, subagentToolCalls: 0, subagentUserMessages: 0,
+    // 姿态信号（授权策略/沙箱/任务分解）目前只有 Codex 会话带。用全部会话当分母
+    // 会把比例稀释：实测「8/411 个会话有任务分解」，真实分母是 17 个 Codex 会话，
+    // 差 24 倍。凡是只有部分数据源具备的信号，必须自带自己的分母。
+    postureSessions: 0,
     // 姿态分布（Codex 独有，官方 /insights 无等价信号）：
     // 用户显式给出的授权与沙箱策略，是「你把它当自主执行器还是结对编程」最硬的证据。
     approvalPolicies: {}, sandboxPolicies: {}, originators: {}, sources: {}, models: {},
@@ -47,6 +51,7 @@ export function aggregateMetas(metas) {
     bump(a.approvalPolicies, m.approvalPolicy); bump(a.sandboxPolicies, m.sandboxPolicy);
     bump(a.originators, m.originator); bump(a.sources, m.source); bump(a.models, m.model);
     if ((m.planSteps || []).length) a.planSessions++;
+    if (m.approvalPolicy || m.sandboxPolicy || (m.planSteps || []).length) a.postureSessions++;
   }
   a.daysActive = a.days.size; delete a.days;
   // 注意：totalMinutes 是「会话跨度之和」，含挂机时间且多窗口并发时会重复累加，
