@@ -9,7 +9,8 @@
  *
  * 但官方 session-meta **只有元数据，没有对话正文**（只给 first_prompt 一条），
  * 而 L3 打标要的正是正文。所以对话正文从 ~/.claude/projects 的 jsonl 补，
- * 两边按 session_id 关联（实测 394/394 命中，见 tests/claude-code-transcript.test.mjs）。
+ * 两边按 session_id 关联。实测本机 394 个 session-meta：索引命中 394/394，
+ * 其中 393 个有非空正文（缺的那个是 /login 会话，全篇没有人说过话，空结果是对的）。
  *
  * 🔴 这里划一条硬线：**jsonl 只用来取文本，绝不用来算任何数字**。
  * token、工具调用次数、失败数、提交数一律沿用官方字段。
@@ -20,6 +21,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { redact } from '../redact.mjs';
+import { clipHeadTail } from '../budget.mjs';
 
 export const name = 'claude-code';
 
@@ -27,6 +29,8 @@ export function claudeHome() {
   return process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
 }
 export function metaDir() { return join(claudeHome(), 'usage-data', 'session-meta'); }
+/** 对话正文所在目录（深度分析的第二个数据源，doctor 要能自检到它）。 */
+export function transcriptsDir() { return join(claudeHome(), 'projects'); }
 
 export function discover({ days = 30 } = {}) {
   const dir = metaDir();
@@ -74,12 +78,23 @@ export function parse(file) {
     // 元数据到此为止全部来自官方 session-meta。以下只补对话正文：
     // 官方不提供 transcript，而 L3 打标离了正文什么也做不了。
     ...(() => {
-      const { transcript, sidechainMessages } = readTranscript(d.session_id);
-      if (transcript.length) return { transcript, transcriptComplete: true, sidechainMessages };
+      const r = readTranscript(d.session_id);
+      if (r.transcript.length) {
+        return {
+          transcript: r.transcript,
+          // 🔴 如实：截断过就不是 complete。此前只要读到一行就报 true，
+          // 而默认采样下 63% 的会话是被截断的——那是个会骗人的字段。
+          transcriptComplete: r.truncatedLines === 0,
+          truncatedLines: r.truncatedLines,
+          sidechainMessages: r.sidechainMessages,
+          injectedMessages: r.injectedMessages,
+        };
+      }
       // 读不到就退回官方那一条 first_prompt，行为与之前一致
       return {
         transcript: d.first_prompt ? [`[user] ${redact(d.first_prompt).slice(0, 1200)}`] : [],
-        transcriptComplete: false, sidechainMessages: 0,
+        transcriptComplete: false, truncatedLines: 0,
+        sidechainMessages: r.sidechainMessages, injectedMessages: r.injectedMessages,
       };
     })(),
   };
@@ -90,10 +105,12 @@ let _index = null;
 export function transcriptIndex(rootOverride) {
   if (_index && !rootOverride) return _index;
   const idx = new Map();
-  const root = rootOverride || join(claudeHome(), 'projects');
+  const root = rootOverride || transcriptsDir();
   if (!existsSync(root)) return rootOverride ? idx : (_index = idx);
   // 必须递归：实测 30,307 个 jsonl 里有 15,123 个在更深层目录（最深 7 层）
   // （子代理、workflow 运行各自建目录）。只扫两层会漏掉一半。
+  const sizes = new Map();
+  const sizeOf = (f) => { try { return statSync(f).size; } catch { return -1; } };
   const walk = (dir, depth = 0) => {
     if (depth > 8) return;
     let entries;
@@ -104,11 +121,12 @@ export function transcriptIndex(rootOverride) {
       if (!e.name.endsWith('.jsonl')) continue;
       const id = e.name.slice(0, -6);
       // 同一 session 可能在多处留档，取体积最大的那份（内容最全）
-      const prev = idx.get(id);
-      if (prev) {
-        try { if (statSync(p).size <= statSync(prev).size) continue; } catch { continue; }
-      }
-      idx.set(id, p);
+      const size = sizeOf(p);
+      if (size < 0) continue;                       // 新候选读不了，保留已有的
+      // 只比缓存下来的尺寸，不重复 stat 旧文件：原先一个 catch 同时兜住两次 statSync，
+      // 旧文件被删或成了断链时会把坏条目留下、把好的新文件扔掉。
+      if (idx.has(id) && size <= (sizes.get(id) ?? -1)) continue;
+      idx.set(id, p); sizes.set(id, size);
     }
   };
   walk(root);
@@ -163,9 +181,9 @@ function userText(content) {
  */
 export function readTranscript(sessionId, { maxLines = 400, root = null } = {}) {
   const file = transcriptIndex(root).get(sessionId);
-  if (!file) return { transcript: [], sidechainMessages: 0, injectedMessages: 0 };
+  if (!file) return { transcript: [], sidechainMessages: 0, injectedMessages: 0, truncatedLines: 0 };
   let lines;
-  try { lines = readFileSync(file, 'utf8').split('\n'); } catch { return { transcript: [], sidechainMessages: 0, injectedMessages: 0 }; }
+  try { lines = readFileSync(file, 'utf8').split('\n'); } catch { return { transcript: [], sidechainMessages: 0, injectedMessages: 0, truncatedLines: 0 }; }
   const out = [];
   let sidechain = 0, injected = 0;
   for (const line of lines) {
@@ -173,38 +191,65 @@ export function readTranscript(sessionId, { maxLines = 400, root = null } = {}) 
     let d; try { d = JSON.parse(line); } catch { continue; }
     // 子代理消息的「用户消息」是控制器写的任务书，不是人说的话。
     // 官方 session-meta 也不含它们，混进来两边就对不上了。
-    if (d.isSidechain) { sidechain++; continue; }
     const msg = d.message;
+    // sidechain 数的是子代理的**用户消息**（控制器写的任务书），不是 jsonl 行数：
+    // summary 行、tool_result 回执都带这个标记，按行计会把这个数字撑大好几倍。
+    if (d.isSidechain) { if (msg && d.type === 'user') sidechain++; continue; }
     if (!msg) continue;
     if (d.type === 'user') {
       if (d.isMeta === true || d.isCompactSummary === true) { injected++; continue; }
       const t = userText(msg.content);
       if (!t) continue;
       const clean = redact(t.trim());
-      // 长度下限只挡空白，不挡短指令：中文 3 个字就是完整指令（「干这个」「改一下」
-      // 「继续跑」），按英文习惯写 <4 会把它们整批丢掉——实测在测试里当场撞到。
-      if (!clean || clean.length < 2 || isInjected(clean)) continue;
-      out.push(`[user] ${clip(clean)}`);
+      // 只挡空白，不设长度下限。中文里 1 个字就可以是完整回应（「好」「对」「停」），
+      // 3 个字就是完整指令（「干这个」「改一下」）。按英文习惯写 <4 会整批丢掉它们，
+      // 改成 <2 仍然吃掉全部单字回应——两次都是在测试里当场撞到的。
+      if (!clean || isInjected(clean)) continue;
+      out.push(`[user] ${clipHeadTail(clean, 1200)}`);
     } else if (d.type === 'assistant') {
       const c = msg.content;
       if (!Array.isArray(c)) continue;
+      // 同一条 assistant 消息里的多个 tool_use 合并成一行。
+      // 实测一个 2977 行的会话里 [tool] 占 358 行（89.5%），把行预算吃光——
+      // 最后只有 8 条用户消息进模型。工具名本身信息量低，合并不丢信息但省出大量额度。
+      const tools = [];
       for (const b of c) {
         if (!b || typeof b !== 'object') continue;
         if (b.type === 'text' && b.text && b.text.trim()) {
-          out.push(`[assistant] ${clip(redact(b.text.trim()))}`);
+          if (tools.length) { out.push(`[tool] ${tools.splice(0).join(', ')}`); }
+          out.push(`[assistant] ${clipHeadTail(redact(b.text.trim()), 1200)}`);
         } else if (b.type === 'tool_use') {
-          out.push(`[tool] ${b.name || 'unknown'}`);
+          tools.push(b.name || 'unknown');
         }
       }
+      if (tools.length) out.push(`[tool] ${tools.join(', ')}`);
     }
-    if (out.length >= maxLines) break;
   }
-  return { transcript: out, sidechainMessages: sidechain, injectedMessages: injected };
+  // 相邻的 [tool] 行再折一层：连着几条 assistant 消息只调工具、不说话时，
+  // 上面的「同消息内合并」折不到它们。工具名序列本身保留，信息不丢，行数大降。
+  // 实测最长的几个会话里 [tool] 占 67.5%（原始 89.5%），折完给对话腾出成倍的预算。
+  const folded = [];
+  for (const line of out) {
+    if (line.startsWith('[tool] ') && folded.length && folded[folded.length - 1].startsWith('[tool] ')) {
+      const merged = `${folded[folded.length - 1]}, ${line.slice(7)}`;
+      folded[folded.length - 1] = clipHeadTail(merged, 600);
+    } else folded.push(line);
+  }
+  out.length = 0; out.push(...folded);
+  // 🔴 行数超限时保首尾，绝不能只取前 N 行。
+  // budget.mjs 开篇那条教训（同一类「结尾被切掉」被外部测试连着抓到两轮）在行维度同样成立：
+  // 会话结尾是验收边界——「这样就行了」「还是不对，再改」都在最后几行，砍掉尾巴等于砍掉结论。
+  // 放大效应比看上去严重：全量 393 个会话只有 6.1% 撞上限，但采样器按 userMessages 降序挑，
+  // 默认 --limit 30 时被送进模型的样本有 63% 撞上限、丢掉一半用户消息，且丢的全是尾部。
+  if (out.length > maxLines) {
+    const head = Math.floor(maxLines * 0.4);
+    const tail = maxLines - head - 1;
+    const omitted = out.length - head - tail;
+    return {
+      transcript: [...out.slice(0, head), `[… 略去中段 ${omitted} 行 …]`, ...out.slice(-tail)],
+      sidechainMessages: sidechain, injectedMessages: injected, truncatedLines: omitted,
+    };
+  }
+  return { transcript: out, sidechainMessages: sidechain, injectedMessages: injected, truncatedLines: 0 };
 }
 
-/** 与 codex provider 同口径的单条裁剪：保首尾，中段省略。 */
-function clip(t, max = 1200) {
-  if (t.length <= max) return t;
-  const head = Math.floor(max * 0.62), tail = max - head - 16;
-  return `${t.slice(0, head)} …[略${t.length - max}字]… ${t.slice(-tail)}`;
-}

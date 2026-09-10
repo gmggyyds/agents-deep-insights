@@ -87,6 +87,7 @@ async function main() {
     console.log(`  sqlite3   ${d.sqlite3 ? '可用' : '缺失（降级扫目录）'}`);
     console.log(`  会话数    codex ${d.counts.codexSessions30d}/${d.counts.codexSessionsAll}（30天/全部）`);
     console.log(`            claude-code ${d.counts.claudeMeta30d}/${d.counts.claudeMetaAll}`);
+    console.log(`  对话正文  ${d.counts.claudeMetaWithTranscript}/${d.counts.claudeMetaAll} 个 Claude Code 会话可做深度分析`);
     if (d.problems.length) { console.log('\n  问题:'); for (const p of d.problems) console.log(`    ${p.code}  ${p.hint}`); }
     else console.log('\n  未发现问题。');
     console.log('\n  提 issue 时请附上：adi doctor --issue\n');

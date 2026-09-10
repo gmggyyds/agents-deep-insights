@@ -41,12 +41,18 @@ export function collect() {
   d.sources = {
     codexHome: { path: tilde(codex.codexHome()), exists: existsSync(codex.codexHome()) },
     claudeMeta: { path: tilde(cc.metaDir()), exists: existsSync(cc.metaDir()) },
+    // 深度分析所需的对话正文来自这里；只报路径与计数，绝不读内容
+    claudeTranscripts: { path: tilde(cc.transcriptsDir()), exists: existsSync(cc.transcriptsDir()) },
   };
   d.counts = {
     codexSessions30d: codex.discover({ days: 30 }).length,
     codexSessionsAll: codex.discover({ days: 0 }).length,
     claudeMeta30d: cc.discover({ days: 30 }).length,
     claudeMetaAll: cc.discover({ days: 0 }).length,
+    claudeTranscriptFiles: cc.transcriptIndex().size,
+    // 有元数据也有正文的会话数——深度分析真正能用的就是这些
+    claudeMetaWithTranscript: cc.discover({ days: 0 })
+      .filter((m) => { const p = cc.parse(m.path); return p && p.transcript.length > 1; }).length,
   };
 
   d.problems = [];
@@ -56,6 +62,14 @@ export function collect() {
   }
   if (d.counts.claudeMetaAll === 0 && d.claudeCode.installed) {
     d.problems.push({ code: 'E_NO_SESSIONS', scope: 'claude-code', hint: '在 Claude Code 里先跑一次 /insights 生成 session-meta' });
+  }
+  // 新增数据源就得跟着扩自检面，否则「目录被清理」这种真故障会在一片绿灯里查不出来
+  if (d.counts.claudeMetaAll > 0 && d.counts.claudeMetaWithTranscript === 0) {
+    d.problems.push({
+      code: 'E_NO_TRANSCRIPT', scope: 'claude-code',
+      hint: `有 ${d.counts.claudeMetaAll} 个 session-meta，但一个都找不到对应的对话正文；`
+        + `检查 ${tilde(cc.transcriptsDir())} 是否被清理过。没有正文只能跑 stats，跑不了 run`,
+    });
   }
   if (!d.sqlite3) d.problems.push({ code: 'W_NO_SQLITE', hint: 'sqlite3 缺失，Codex 索引降级为直接扫目录（功能不减）' });
   return d;
