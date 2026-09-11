@@ -102,6 +102,11 @@ Claude Code 有内置 `/insights`，Codex CLI 什么都没有。而 `/insights` 
 采集与统计全部在本地跑，深度分析那一步把**脱敏后的片段**发给**你自己已经配置好的模型**（`codex exec`），
 不经过任何第三方服务器——这个工具没有服务器。
 
+
+<div align="center">
+<img src="./compare.gif" alt="怪模型 vs 照镜子" width="100%">
+</div>
+
 ## ⚖️ 官方那版 vs 这一版
 
 <table>
@@ -369,5 +374,18 @@ README.md 是真源。
 同一个坑踩三次，就不是记性问题了，是你的规则里少了一条。
 
 先跑一次 `npx github:gmggyyds/agents-deep-insights`，什么都不花，先看看你自己长什么样。
+
+
+---
+
+<div align="center">
+
+<img src="./mascot.png" alt="国民哥哥 Sam" width="150">
+
+**国民哥哥出品**
+
+<sub>做的每一个东西，都是自己每天在用的</sub>
+
+</div>
 
 <sub>MIT License</sub>
