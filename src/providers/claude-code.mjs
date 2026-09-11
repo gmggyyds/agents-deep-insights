@@ -73,7 +73,11 @@ export function parse(file) {
       if (tr && tr.transcript.length > 1) {
         return {
           transcript: tr.transcript,
-          transcriptComplete: true,
+          // 🔴 如实：截断过就不是 complete。只要读到一行就报 true 会骗人——
+          // 采样器按 userMessages 降序挑，被送进模型的恰恰是最容易撞上限的那些。
+          transcriptComplete: !tr.stats.truncatedLines,
+          truncatedLines: tr.stats.truncatedLines,
+          injectedRows: tr.stats.injectedRows,
           // 工具成败改用 jsonl 里的 is_error（权威信号）；官方 tool_errors 只有总数，
           // 拿不到「判不出来」那一档，会把未知静默算进成功。
           toolFailures: tr.stats.toolFailures,

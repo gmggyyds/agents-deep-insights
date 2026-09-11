@@ -127,6 +127,7 @@ padding:5px 14px;font-size:12.5px;cursor:pointer;font-family:inherit}
 .note.posture{background:#f4f1ec;font-size:13px}
 .samplewarn{border-width:2px}
 .note.cross-thin{border-width:2px}
+.card .sub2{display:block;font-size:11px;color:#8a8a8a;margin-top:4px}
 table.cross{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px;background:#fff;border:1.5px solid #ddd8d0;border-radius:12px;overflow:hidden}
 table.cross th{text-align:left;padding:10px 12px;background:#f4f1ec;color:#6a6a6a;font-size:12.5px;font-weight:600}
 table.cross td{padding:10px 12px;border-top:1px solid #eeebe6;color:#3d3d3d}
@@ -287,28 +288,35 @@ ${bi(i.vision, e && e.vision)}</div>`; }).join('')}` : ''}
 
 ${(() => {
   const cm = facetAgg.collaborationModes || [];
-  if (!cm.length) return '';
+  // 三类即使全 0 也会各占一行（那是「没打上标」，不是「都是 0」），此时整段不渲染
+  if (!cm.length || !cm.some((m) => m.count > 0)) return '';
   const cmax = cm[0]?.count || 1;
   const tot = cm.reduce((a, b) => a + b.count, 0) || 1;
   const X = facetAgg.collaborationCross || {};
   const pctOf = (n) => (n / tot * 100).toFixed(1);
-  const share = cm.map((m) => `<div class="card"><b>${pctOf(m.count)}%</b><span class="zh">${esc(L(m.key))}</span>${BI ? `<span class="en">${esc(LE(m.key))}</span>` : ''}</div>`).join('');
+  const share = cm.map((m) => `<div class="card"><b>${pctOf(m.count)}%</b><span class="zh">${esc(L(m.key))}</span>${BI ? `<span class="en">${esc(LE(m.key))}</span>` : ''}<span class="sub2">${m.sessions}/${facetAgg.n} 个会话出现过</span></div>`).join('');
+  const num1 = (v) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(1) : '—');
+  const pct0 = (v) => (typeof v === 'number' && Number.isFinite(v) ? `${(v * 100).toFixed(0)}%` : '—');
+  const sgn = (v, digits, suffix) => (typeof v === 'number' && Number.isFinite(v)
+    ? `${v > 0 ? '+' : ''}${v.toFixed(digits)}${suffix}` : '');
   const rows = Object.entries(X.byMode || {}).map(([mode, d]) => {
-    if (d.insufficient) {
-      return `<tr><td>${esc(L(mode))}</td><td colspan="3" class="ins">样本不足（有 ${d.with} / 无 ${d.without} 个会话），不下结论</td></tr>`;
+    if (!d || d.insufficient) {
+      const why = d?.reason === 'no_variation'
+        ? '各会话占比几乎一样，切不出可比的两组'
+        : `分组后一侧样本不足（${d?.high ?? 0} / ${d?.low ?? 0}）`;
+      return `<tr><td>${esc(L(mode))}</td><td colspan="3" class="ins">${why}，不下结论</td></tr>`;
     }
-    const sd = d.successRateDelta;
-    const fd = d.frictionDelta;
-    const sgn = (v, digits, suffix) => (v > 0 ? '+' : '') + v.toFixed(digits) + suffix;
+    const hi = d.high || {}, lo = d.low || {};
+    const sd = sgn((d.successRateDelta ?? NaN) * 100, 0, 'pp');
     return `<tr><td>${esc(L(mode))}</td>
-      <td>${d.with.n} / ${d.without.n}</td>
-      <td>${d.with.successRate == null ? '—' : (d.with.successRate * 100).toFixed(0) + '%'} vs ${d.without.successRate == null ? '—' : (d.without.successRate * 100).toFixed(0) + '%'}${sd == null ? '' : ` <em>${sgn(sd * 100, 0, 'pp')}</em>`}</td>
-      <td>${d.with.frictionPerSession.toFixed(1)} vs ${d.without.frictionPerSession.toFixed(1)} <em>${sgn(fd, 1, '')}</em></td></tr>`;
+      <td>${hi.n ?? 0} / ${lo.n ?? 0}</td>
+      <td>${pct0(hi.successRate)} vs ${pct0(lo.successRate)}${sd ? ` <em>${sd}</em>` : ''}</td>
+      <td>${num1(hi.frictionPerSession)} vs ${num1(lo.frictionPerSession)} <em>${sgn(d.frictionDelta, 1, '')}</em></td></tr>`;
   }).join('');
   return `
 ${biH('你在要求 AI 做什么', 'What You Are Asking For')}
-${bi('把你发出的每一条消息按「在要求什么」分三类：派活＝Working、想清楚＝Thinking、把关＝Oversight，就是课上讲的那三个词。一条消息常常同时要求好几件事——「你先去找，给我参考，我再纠正你」三类都算，所以三者相加会超过 100%。这里量的是注意力分布，不是水平高低。',
-     'Every message you sent, classified by what it asks for: delegate = Working, deliberate = Thinking, steer = Oversight — the same three words used in the talk. One message often asks for several things at once, so the three add up to more than 100%. This describes where your attention went, not how good you are.')}
+${bi('把你发出的每一条消息按「在要求什么」分三类：派活＝Working、想清楚＝Thinking、把关＝Oversight，就是课上讲的那三个词。一条消息常常同时要求好几件事——「你先去找，给我参考，我再纠正你」三类都算，会同时计入三类。下面的百分比是三类标签各占多少（合计 100%），卡片下方另给出每类在多少个会话里出现过。这里量的是注意力分布，不是水平高低。',
+     'Every message you sent, classified by what it asks for: delegate = Working, deliberate = Thinking, steer = Oversight — the same three words used in the talk. One message often asks for several things at once and is counted under each. The percentages are the share of each label among all labels (they sum to 100%); under each card is how many sessions that mode appeared in. This describes where your attention went, not how good you are.')}
 <div class="note posture">${bi('这个百分比按「消息条数」算，不按时间或心力算。一条「帮我想清楚这事该不该做」你可能想了半小时，一条「继续」只要一秒，在这里都算 1 条——所以条数占比天然低估「想清楚」。看到「想清楚 7%」不等于「我只有 7% 的精力在思考」。如果你听过「我九成时间在想」这类说法，那描述的是心力重心，和条数占比不是同一个口径，两个数不能直接比大小。',
      'This percentage counts messages, not the time or thought behind them. "Help me work out whether this is worth doing" may have cost you half an hour; "continue" costs a second — both count as one message here, so a message-count share structurally understates deliberation. Seeing "deliberate 7%" does not mean only 7% of your thinking went into thinking. If you have heard someone say "I spend ninety percent of my time thinking", that describes where their effort sits — a different measure, not comparable to this one.')}
 <br>${bi('这几个占比不是分数。同一个人在不同月份差别很大：实测同一使用者相隔三个月的三类占比从 6.3/75.8/17.9 变成 7.2/78.6/14.2，主要由那段时间在干什么类型的活决定，不是能力变化。要比就比同一个人、同一个口径、不同时间的两次统计。',
@@ -316,7 +324,9 @@ ${bi('把你发出的每一条消息按「在要求什么」分三类：派活�
 <div class="cards">${share}</div>
 ${X.insufficient ? '<div class="note cross-thin">已打标会话不足，无法做交叉分析。</div>' : `
 ${bi('这三类跟结果有没有关系', 'Does any of this relate to how sessions turn out')}
-<table class="cross"><thead><tr><th>模式</th><th>有 / 无（会话数）</th><th>成功率（有 vs 无）</th><th>每会话摩擦数</th></tr></thead>
+${bi('按每个会话里该模式所占的比例，把会话切成「占比高的一半」和「占比低的一半」再比。不用「有没有」分组——多标签下派活几乎每个会话都有，那样分对照组恒空，那一行就永远出不了结论。',
+     'Sessions are split by how large a share that mode takes within each session: the higher-share half versus the lower-share half. Not "has it / does not" — under multi-label counting the dominant mode appears in almost every session, which would leave the control group empty and that row permanently inconclusive.')}
+<table class="cross"><thead><tr><th>模式</th><th>占比高 / 低（会话数）</th><th>成功率（高 vs 低）</th><th>每会话摩擦数</th></tr></thead>
 <tbody>${rows}</tbody></table>
 <div class="note posture"><b>怎么读这张表：</b>它是<b>相关性，不是因果</b>。简单任务天然既不需要「想清楚」又天然容易成功，这一条就足以把关系拉成反向。
 成功率的分母只用能判定的会话（结果说不清的单列，不塞进任何一边）。

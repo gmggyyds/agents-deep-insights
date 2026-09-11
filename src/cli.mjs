@@ -14,26 +14,13 @@ import { labelWithCodex, compactTranscript } from './pipeline/label.mjs';
 import { renderHtml } from './render/html.mjs';
 import { synthesize, translateNarrative } from './pipeline/synthesize.mjs';
 import { createHash } from 'node:crypto';
-import { facetSchema } from './schema/facet.mjs';
+import { cacheKey } from './cache-key.mjs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const CACHE = join(process.env.ADI_CACHE || join(homedir(), '.agents-deep-insights'), 'facets');
-// 指纹必须包含转录内容本身。此前只用长度，内容变了但长度不变会命中旧缓存、
-// 复用过时结果（外部测试发现："Need AAA" -> "Need BBB" 指纹不变）。
-//
-// 契约版本从 facetSchema() 自身派生，不再手写 `v5|` 这类常量。
-// 手写版本号是「靠人记得改」的机制：2026-09-10 给 facet 加 collaboration_mode_counts
-// 时就漏了 bump——6 个会话全部命中旧缓存，新字段静默为空，报告里整段消失，
-// 而单元测试全绿（测的是聚合逻辑，喂的是手写 facet，碰不到缓存这条路）。
-// 现在改任何一处 facet 契约，指纹自动变化，旧缓存自动失效。
-export const SCHEMA_FINGERPRINT = createHash('sha256')
-  .update(JSON.stringify(facetSchema())).digest('hex').slice(0, 8);
-const fingerprint = (m) => createHash('sha256')
-  .update(`${SCHEMA_FINGERPRINT}|${m.provider}|${m.id}|${m.userMessages}|${m.toolCalls}|`)
-  .update(compactTranscript(m.transcript || []))
-  .digest('hex').slice(0, 16);
+const fingerprint = (m) => cacheKey(m, compactTranscript);
 
 const argv = process.argv.slice(2);
 const cmd = argv.find((a) => !a.startsWith('-')) || 'stats';
